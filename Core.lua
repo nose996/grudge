@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.2"
+ns.version = "2.1.3"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -41,6 +41,7 @@ local DEFAULTS = {
     nearbyWarn    = 120,
     nameplate     = true,    -- 姓名板缓存（提供等级/职业 + 仇人接近提醒）
     nearbySound   = true,    -- 仇人接近时播放提示音
+    alertSound    = 1,       -- 提示音音源编号（见 UI 里的 SOUNDS 表，1=自动多路）
     nearbyScreen  = true,    -- 仇人接近时屏幕中央弹一行字
     tooltip       = true,    -- 鼠标悬停玩家时显示交手记录
     debug         = false,
@@ -1059,7 +1060,8 @@ function ns.PrintEnv()
         (GetHonorPattern() and ("已解析 → " .. GetHonorPattern()) or "缺失"))
     print("|cff8ab4ff[记仇]|r 声音接口：PlaySound=" .. tostring(PlaySound ~= nil)
         .. " · PlaySoundFile=" .. tostring(PlaySoundFile ~= nil)
-        .. "（/kl beep 实测能不能响）")
+        .. " · 当前音源 " .. tostring((s and s.alertSound) or 1)
+        .. "（/kl snd 挨个试）")
 
     local k, d, n = ns.GetStats()
     print(format("|cff8ab4ff[记仇]|r 名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d))

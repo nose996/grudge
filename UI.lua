@@ -624,21 +624,70 @@ end)
 
 -- 提示音：这个客户端封了不少东西，两路交替试，响哪路算哪路
 -- /kl beep 可以单独测，日志里会告诉你走的是哪一路
-local function PlayAlertSound()
-    local file = "Sound\\Interface\\AlarmClockWarning3.wav"
-    if PlaySoundFile then
-        local ok, res = pcall(PlaySoundFile, file, "Master")
-        if ok and res ~= false then return "文件音效" end
+-- 提示音：这个客户端连音效素材都可能被裁掉。
+-- 文件音效「调用成功但文件不存在」时会静默返回，光看 pcall 判断不出来，
+-- 所以这里给一组候选让你实机挑，挑中了存进设置里。
+-- 编号音效走客户端内部音效库，不依赖文件在不在，通常比文件更稳。
+local function KitId(key, fallback)
+    local t = _G.SOUNDKIT
+    if type(t) == "table" and t[key] then return t[key] end
+    return fallback
+end
+
+local SOUNDS = {
+    { name = "自动（编号复选框优先）", kind = "auto" },
+    { name = "复选框 叮",              kind = "kit",  arg = 856,  kit = "IG_MAINMENU_OPTION_CHECKBOX_ON" },
+    { name = "警报 8962",              kind = "kit",  arg = 8962 },
+    { name = "提示 1115",              kind = "kit",  arg = 1115 },
+    { name = "闹钟警告文件",            kind = "file", arg = "Sound\\Interface\\AlarmClockWarning3.wav" },
+    { name = "复选框文件",              kind = "file", arg = "Sound\\Interface\\igMainMenuOptionCheckBoxOn.wav" },
+    { name = "地图标记文件",            kind = "file", arg = "Sound\\Interface\\MapPing.wav" },
+    { name = "密语提示文件",            kind = "file", arg = "Sound\\Interface\\iTellMessage.wav" },
+}
+ns.SOUNDS = SOUNDS
+
+local function FireSound(idx, channel)
+    local p = SOUNDS[idx]
+    if not p then return "序号无效" end
+    local chan = channel or "Master"
+
+    if p.kind == "auto" then
+        -- 编号优先：内部音效库不依赖素材文件
+        local got = {}
+        if PlaySound then
+            local ok = pcall(PlaySound, KitId("IG_MAINMENU_OPTION_CHECKBOX_ON", 856), chan)
+            if ok then got[#got + 1] = "复选框" end
+            local ok2 = pcall(PlaySound, 8962, chan)
+            if ok2 then got[#got + 1] = "警报" end
+        end
+        if #got == 0 and PlaySoundFile then
+            local ok = pcall(PlaySoundFile, p.arg or "Sound\\Interface\\AlarmClockWarning3.wav", chan)
+            if ok then got[#got + 1] = "文件" end
+        end
+        return #got > 0 and ("自动：" .. table.concat(got, "+")) or "没有任何接口"
+
+    elseif p.kind == "kit" then
+        if not PlaySound then return "PlaySound 不存在" end
+        local id = p.arg
+        local t = _G.SOUNDKIT
+        if type(t) == "table" and p.kit and t[p.kit] then id = t[p.kit] end
+        local ok, res = pcall(PlaySound, id, chan)
+        if not ok then return "报错：" .. tostring(res) end
+        return p.name .. "（编号 " .. tostring(id) .. "）"
     end
-    if PlaySound then
-        local ok = pcall(PlaySound, 8962)
-        if ok then return "编号音效" end
-    end
-    if PlaySound then
-        local ok = pcall(PlaySound, 1115)
-        if ok then return "编号音效(备用)" end
-    end
-    return "没有可用接口"
+
+    if not PlaySoundFile then return "PlaySoundFile 不存在" end
+    local ok, res = pcall(PlaySoundFile, p.arg, chan)
+    if not ok then return "报错：" .. tostring(res) end
+    if res == false then return "客户端拒绝播放（文件多半被裁了）" end
+    return p.name
+end
+ns.FireSound = FireSound
+
+local function PlayAlertSound(forceIdx, channel)
+    local s = KillListDB and KillListDB.settings
+    local idx = forceIdx or (s and s.alertSound) or 1
+    return FireSound(idx, channel)
 end
 
 ns.PlayAlertSound = PlayAlertSound
@@ -953,10 +1002,14 @@ MakeBtn(154, -256, 130, "清理脏数据", function()
     SyncSettings()
 end)
 
-MakeBtn(16, -286, 130, "试播提示音", function()
-    local how = PlayAlertSound()
-    print("|cff8ab4ff[记仇]|r 提示音试播：" .. tostring(how) ..
-        (how == "没有可用接口" and "（这个客户端把声音接口也关了，只能靠屏幕提示）" or ""))
+MakeBtn(16, -286, 130, "换个提示音", function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    local n = #SOUNDS
+    s.alertSound = ((s.alertSound or 1) % n) + 1
+    local how = FireSound(s.alertSound)
+    print(format("|cff8ab4ff[记仇]|r 提示音 %d/%d：%s → %s",
+        s.alertSound, n, SOUNDS[s.alertSound].name, how))
 end)
 
 local wipeArmed = false
@@ -1030,11 +1083,33 @@ SlashCmdList["KILLLIST"] = function(msg)
         end
 
     elseif msg == "beep" then
-        -- 试播：同时看到屏幕提示 + 听到声音，并能确认声音走的是哪一路
+        -- 试播：屏幕横幅 + 当前音源，一并验证
         local how = PlayAlertSound()
-        print("|cff8ab4ff[记仇]|r 提示音试播：" .. tostring(how) ..
-            (how == "没有可用接口" and "（这个客户端把声音接口也关了，只能靠屏幕提示）" or ""))
+        print("|cff8ab4ff[记仇]|r 提示音试播：" .. tostring(how))
         ns.ShowAlert("测试目标 假人", 3, true)
+
+    elseif msg == "snd" or msg:find("^snd ") then
+        local arg = msg:match("^snd%s+([%d]+)")
+        if arg then
+            local n = tonumber(arg)
+            if not SOUNDS[n] then
+                print(format("|cff8ab4ff[记仇]|r 序号只能是 1~%d", #SOUNDS))
+                return
+            end
+            KillListDB.settings.alertSound = n
+            local how = FireSound(n)
+            print(format("|cff8ab4ff[记仇]|r 提示音已设为 %d/%d：%s → %s",
+                n, #SOUNDS, SOUNDS[n].name, how))
+        else
+            print("|cff8ab4ff[记仇]|r 逐个试播，听到哪声就用 /kl snd <序号> 定下来")
+            for i = 1, #SOUNDS do
+                C_Timer.After((i - 1) * 0.9, function()
+                    local how = FireSound(i)
+                    print(format("|cff8ab4ff[记仇]|r 第 %d 个 / %d：%s → %s",
+                        i, #SOUNDS, SOUNDS[i].name, how))
+                end)
+            end
+        end
 
     elseif msg == "stats" then
         local k, d, n = ns.GetStats()
@@ -1080,7 +1155,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then
