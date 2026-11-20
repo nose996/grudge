@@ -778,6 +778,72 @@ ns.NearbyAlert = function(name, deaths, starred)
 end
 
 --------------------------------------------------------------
+-- 敌情条：仇人在视野内就一直挂在屏幕上方，血条消失才收
+-- 横幅只闪 3.8 秒，打架时容易错过；这条是持续状态，抬头就在
+--------------------------------------------------------------
+local enemyBar = CreateFrame("Frame", "KillListEnemyBar", UIParent, "BackdropTemplate")
+enemyBar:SetHeight(24)
+enemyBar:SetPoint("TOP", UIParent, "TOP", 0, -96)
+enemyBar:SetFrameStrata("HIGH")
+enemyBar:SetBackdrop({
+    bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 10,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+})
+enemyBar:SetBackdropColor(0.22, 0.02, 0.02, 0.88)
+enemyBar:SetBackdropBorderColor(0.90, 0.22, 0.18, 0.95)
+enemyBar:EnableMouse(false)
+enemyBar:Hide()
+
+local enemyBarText = enemyBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+enemyBarText:SetPoint("LEFT", enemyBar, "LEFT", 12, 0)
+enemyBarText:SetPoint("RIGHT", enemyBar, "RIGHT", -12, 0)
+enemyBarText:SetJustifyH("CENTER")
+pcall(function()
+    local path = GameFontNormalSmall:GetFont()
+    enemyBarText:SetFont(path, 14, "OUTLINE")
+end)
+
+local function RefreshEnemyBar()
+    local s = KillListDB and KillListDB.settings
+    if not s or s.enemyBar == false then enemyBar:Hide(); return end
+    local list = ns.GetNearby and ns.GetNearby() or {}
+    if #list == 0 then enemyBar:Hide(); return end
+
+    local parts = {}
+    for i = 1, math.min(#list, 4) do
+        local v = list[i]
+        parts[#parts + 1] = (v.star and "|cffffd700★|r" or "")
+            .. "|cffff9999" .. v.name .. "|r|cff9a9a9a " .. tostring(v.deaths or 0) .. "|r"
+    end
+    if #list > 4 then parts[#parts + 1] = "|cff9a9a9a另 " .. tostring(#list - 4) .. " 人|r" end
+
+    enemyBarText:SetText("|cffff4444■ 敌情|r   " .. table.concat(parts, "   ·   "))
+    local w = enemyBarText:GetStringWidth() + 30
+    if w < 180 then w = 180 end
+    if w > 760 then w = 760 end
+    enemyBar:SetWidth(w)
+    enemyBar:Show()
+end
+ns.RefreshEnemyBar = RefreshEnemyBar
+
+-- 常驻不可见的心跳帧：条自己隐藏后 OnUpdate 会停，没法再自动弹出来
+local enemyTick = CreateFrame("Frame")
+local enemyAcc = 0
+enemyTick:SetScript("OnUpdate", function(_, dt)
+    enemyAcc = enemyAcc + dt
+    if enemyAcc >= 0.4 then
+        enemyAcc = 0
+        RefreshEnemyBar()
+    end
+end)
+
+ns.RegListener(function(what)
+    if what == "nearby" then RefreshEnemyBar() end
+end)
+
+--------------------------------------------------------------
 -- 小地图按钮：骑着圆环、可拖动、不敲命令也能开窗口
 --------------------------------------------------------------
 local MINIMAP = Minimap or UIParent
@@ -939,7 +1005,7 @@ mmWatch:SetScript("OnEvent", function() UpdateMinimapPos() end)
 -- 设置面板：把常用命令做成按钮
 --------------------------------------------------------------
 local setFrame = CreateFrame("Frame", "KillListSettingsFrame", UIParent, "BackdropTemplate")
-setFrame:SetSize(300, 430)
+setFrame:SetSize(300, 470)
 setFrame:SetPoint("CENTER", UIParent, "CENTER", 250, 30)
 setFrame:SetFrameStrata("DIALOG")
 setFrame:SetToplevel(true)
@@ -965,7 +1031,7 @@ local setClose = CreateFrame("Button", nil, setFrame, "UIPanelCloseButton")
 setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -3, -3)
 setClose:SetScript("OnClick", function() setFrame:Hide() end)
 
-local btnNearby, btnDebug, btnMinimap, btnTooltip, btnSound, btnScreen, btnWipe, setStat
+local btnNearby, btnDebug, btnMinimap, btnTooltip, btnSound, btnScreen, btnEnemy, btnWipe, setStat
 
 local function SyncSettings()
     local s = KillListDB and KillListDB.settings
@@ -978,6 +1044,9 @@ local function SyncSettings()
     end
     if btnScreen then
         btnScreen:SetText("接近时屏幕提示：" .. ((s.nearbyScreen ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
+    end
+    if btnEnemy then
+        btnEnemy:SetText("顶部敌情条：" .. ((s.enemyBar ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
     end
     if btnDebug then
         btnDebug:SetText("调试输出：" .. (s.debug and "|cff40ff40开|r" or "|cff888888关|r"))
@@ -1048,24 +1117,32 @@ btnScreen = MakeBtn(16, -196, 268, "", function()
     SyncSettings()
 end)
 
-MakeBtn(16, -226, 130, "打开日志窗", function()
+btnEnemy = MakeBtn(16, -226, 268, "", function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    s.enemyBar = not (s.enemyBar ~= false)
+    if ns.RefreshEnemyBar then ns.RefreshEnemyBar() end
+    SyncSettings()
+end)
+
+MakeBtn(16, -256, 130, "打开日志窗", function()
     if ns.ToggleLog then ns.ToggleLog() end
 end)
 
-MakeBtn(154, -226, 130, "导出名单", function()
+MakeBtn(154, -256, 130, "导出名单", function()
     if ShowExport then ShowExport() end
 end)
 
-MakeBtn(16, -256, 130, "环境诊断", function()
+MakeBtn(16, -286, 130, "环境诊断", function()
     if ns.PrintEnv then ns.PrintEnv() end
 end)
 
-MakeBtn(154, -256, 130, "清理脏数据", function()
+MakeBtn(154, -286, 130, "清理脏数据", function()
     if ns.Clean then ns.Clean() end
     SyncSettings()
 end)
 
-MakeBtn(16, -286, 130, "换个提示音", function()
+MakeBtn(16, -316, 130, "换个提示音", function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     local n = #SOUNDS
@@ -1075,7 +1152,7 @@ MakeBtn(16, -286, 130, "换个提示音", function()
 end)
 
 local wipeArmed = false
-btnWipe = MakeBtn(154, -286, 130, "清空全部名单", function()
+btnWipe = MakeBtn(154, -316, 130, "清空全部名单", function()
     if not wipeArmed then
         wipeArmed = true
         btnWipe:SetText("|cffff3333再点一次，确认清空|r")
@@ -1092,10 +1169,10 @@ btnWipe = MakeBtn(154, -286, 130, "清空全部名单", function()
 end)
 
 setStat = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -318)
+setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -348)
 
 local setHint = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -340)
+setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -370)
 setHint:SetWidth(266)
 setHint:SetJustifyH("LEFT")
 setHint:SetText("小地图边上那个「仇」字按钮就是入口：左键开名单，右键开设置，按住左键拖动能挪位置。\n姓名板建议一直开着，关掉后只能靠选中目标认人。\n提示音如果没声音，点一下「试播提示音」看聊天框里的诊断。")

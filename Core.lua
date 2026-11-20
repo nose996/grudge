@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.9"
+ns.version = "2.1.10"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -43,6 +43,7 @@ local DEFAULTS = {
     nearbySound   = true,    -- 仇人接近时播放提示音
     alertSound    = 1,       -- 提示音音源编号（见 UI 里的 SOUNDS 表，1=自动/亡灵号角优先）
     nearbyScreen  = true,    -- 仇人接近时屏幕中央弹一行字
+    enemyBar      = true,    -- 仇人在视野内时常驻一条「敌情条」
     tooltip       = true,    -- 鼠标悬停玩家时显示交手记录
     debug         = false,
 }
@@ -787,8 +788,46 @@ local function RecordDeathFromRecap()
 end
 
 --------------------------------------------------------------
--- 姓名板：缓存资料 + 仇人接近提醒
+-- 姓名板：缓存资料 + 仇人接近提醒 + 视野内敌情
 --------------------------------------------------------------
+-- 「敌情条」的数据源：此刻姓名板范围内还挂着的仇人，按 GUID 记着。
+-- 名字板添加时进、移除时出，所以条上的名字和人真的在不在你眼前是一致的。
+ns.nearby = ns.nearby or {}
+
+local function NearbyAdd(guid, name, deaths, star)
+    if not guid or type(guid) ~= "string" or not guid:find("^Player%-") then return end
+    local cur = ns.nearby[guid]
+    ns.nearby[guid] = {
+        name   = name,
+        deaths = deaths,
+        star   = star and true or false,
+        t      = time(),
+        since  = (cur and cur.since) or time(),
+    }
+    ns.Notify("nearby")
+end
+
+local function NearbyDrop(guid)
+    if guid and ns.nearby[guid] then
+        ns.nearby[guid] = nil
+        ns.Notify("nearby")
+    end
+end
+
+function ns.GetNearby()
+    local out, now = {}, time()
+    for g, v in pairs(ns.nearby) do
+        -- 兜底：移除事件万一漏了，在视野里挂了超过 5 分钟就当已经离开
+        if (now - (v.since or now)) > 300 then
+            ns.nearby[g] = nil
+        else
+            out[#out + 1] = v
+        end
+    end
+    table.sort(out, function(a, b) return (a.t or 0) > (b.t or 0) end)
+    return out
+end
+
 local function HandlePlate(unit)
     if not KillListDB or not KillListDB.settings or not PLAYERS then return end
 
@@ -806,13 +845,25 @@ local function HandlePlate(unit)
 
     -- 按名字或 GUID 找已有条目，名字变长（补上姓）时顺手迁移键名
     local e, oldKey = FindEntry(info.name, info.guid)
-    if not e then return end
+    local plateGUID = info.guid or ns.plateUnitGUID[unit]
+    if not e then
+        -- 不是名单里的人，顺手把它从敌情条里摘掉（可能是被删掉的条目）
+        NearbyDrop(plateGUID)
+        return
+    end
     EnsureName(e, oldKey, info.name)
 
     if info.level and info.level > 0 then e.level = info.level end
     e.class = info.class or e.class
     e.race  = info.race  or e.race
     ns.Notify("update")
+
+    -- 敌情条：只要他杀过你且没被忽略，就挂在视野内直到血条消失
+    if (e.deaths or 0) > 0 and not e.ignored then
+        NearbyAdd(plateGUID, e.name, e.deaths, e.star)
+    else
+        NearbyDrop(plateGUID)
+    end
 
     if not KillListDB.settings.nameplate then return end
     if (e.deaths or 0) > 0 and not e.ignored then
@@ -845,6 +896,9 @@ local function HandlePlateGone(unit)
     ns.plateUnitGUID[unit] = nil
     ns.plateUnitName[unit] = nil
     if not guid or type(guid) ~= "string" or not guid:find("^Player%-") then return end
+
+    -- 血条消失 = 离开视野（或者被打死了，那种情况击杀记录另走一条链路）
+    NearbyDrop(guid)
 
     local info = cacheByGUID[guid]
     local name = (info and info.name) or seenName
