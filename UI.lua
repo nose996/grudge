@@ -843,6 +843,23 @@ ns.RegListener(function(what)
     if what == "nearby" then RefreshEnemyBar() end
 end)
 
+-- 测试用：没仇人在线时也能确认条的位置、宽度和排版。
+-- 只往内存里的表塞两条假数据，10 秒后自己清掉，不写进名单、不进存档
+function ns.DemoEnemyBar(seconds)
+    if not ns.nearby then return end
+    local now = time()
+    ns.nearby["Player-Demo0000-01"] = { name = "测试 仇人甲", deaths = 5, star = true,  since = now, t = now }
+    ns.nearby["Player-Demo0000-02"] = { name = "测试 灰名乙", deaths = 2, star = false, since = now, t = now }
+    RefreshEnemyBar()
+    C_Timer.After(seconds or 10, function()
+        if ns.nearby then
+            ns.nearby["Player-Demo0000-01"] = nil
+            ns.nearby["Player-Demo0000-02"] = nil
+        end
+        RefreshEnemyBar()
+    end)
+end
+
 --------------------------------------------------------------
 -- 小地图按钮：骑着圆环、可拖动、不敲命令也能开窗口
 --------------------------------------------------------------
@@ -1279,6 +1296,15 @@ SlashCmdList["KILLLIST"] = function(msg)
             if setFrame:IsShown() then SyncSettings() end
         end
 
+    elseif msg == "demo" then
+        local s = KillListDB and KillListDB.settings
+        if s and s.enemyBar == false then
+            print("|cff8ab4ff[记仇]|r 顶部敌情条现在是关着的，先在设置里打开")
+        elseif ns.DemoEnemyBar then
+            ns.DemoEnemyBar(10)
+            print("|cff8ab4ff[记仇]|r 敌情条测试：屏幕上方显示 10 秒假数据（不进名单、不进存档）")
+        end
+
     elseif msg == "clean" then
         if ns.Clean then ns.Clean() end
 
@@ -1293,7 +1319,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then

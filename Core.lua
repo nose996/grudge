@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.10"
+ns.version = "2.1.11"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -429,14 +429,20 @@ ns.plateUnitName = {}  -- unit -> 名字，同上，缓存里查不到时用它�
 local function RecordFromLastHit(tag)
     local h = ns.lastHit
 
-    -- 优先：此刻还选着的目标如果是玩家且已经死了，那就是刚放倒的人
+    -- 优先：此刻还选着的目标如果是玩家、已经死了，而且他的血条刚从我视野里消失，
+    -- 那才算刚放倒的人。只按「选中了一个死掉的玩家」判会被尸体骗 ——
+    -- 旁边躺着的人只要被选中，任何一次 PARTY_KILL 都会把他算成我的击杀（2.1.10 实机踩过）
     local deadName, deadGUID
     for _, u in ipairs({ "target", "mouseover", "focus" }) do
         if UnitExists(u) and UnitIsPlayer(u) and UnitIsDead(u)
             and not (UnitIsFriend and UnitIsFriend("player", u)) then
-            deadName = BestName(u)
-            deadGUID = UnitGUID(u)
-            break
+            local g = UnitGUID(u)
+            local v = g and ns.plateGone and ns.plateGone[g]
+            if v and (time() - v.t) <= 15 then
+                deadName = BestName(u)
+                deadGUID = g
+                break
+            end
         end
     end
     if deadName then
@@ -536,16 +542,14 @@ local function HandlePartyKill(...)
         end
     end
 
-    -- 参数里没有别的 Player GUID：说明被杀的是怪或宠物，不算 PVP，静默跳过
+    -- 参数里既没有别的 Player GUID、也没有任何名字：被杀的是怪或宠物。
+    -- 唯一还允许猜的情况是「我刚用技能命中过某个人」的记录还在（ns.lastHit，宝宝补最后一刀）。
+    -- 除此之外一律跳过——以前这里会拿「此刻选中的死玩家」兜底，结果旁边躺着的尸体
+    -- 被当成我的击杀（2.1.10 实机踩过：杀玛格拉姆掠夺者，躺尸的「真爱坤 小黑子」进了我杀过的名单）。
     if not victimGUID and not victimName then
-        -- 宝宝/宠物补最后一刀时，这里可能只有 Creature 或 Pet 的 GUID，用最近命中的目标补
-        if RecordFromLastHit("party_kill") then return end
-        -- 击杀瞬间目标常被清掉、姓名板也还没落进 plateGone，隔一会儿再补两次
-        ns.Log("PARTY_KILL 没拿到受害者，1 秒内再补两次", "info")
-        C_Timer.After(0.8, function()
-            if RecordFromLastHit("party_kill_retry1") then return end
-            C_Timer.After(1.5, function() pcall(RecordFromLastHit, "party_kill_retry2") end)
-        end)
+        local h = ns.lastHit
+        if h and (time() - h.t) <= 15 and RecordFromLastHit("party_kill") then return end
+        ns.Debug("PARTY_KILL 不是玩家击杀（没有受害者 Player GUID，也没有命中记录），跳过")
         return
     end
 
