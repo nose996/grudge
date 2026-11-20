@@ -603,14 +603,52 @@ alertText:SetWidth(540)
 -- 描边大字号：激战中快速扫一眼就能看清
 pcall(function()
     local path = GameFontNormalLarge:GetFont()
-    alertText:SetFont(path, 22, "OUTLINE")
+    alertText:SetFont(path, 24, "OUTLINE")
 end)
 alertText:SetTextColor(1, 0.93, 0.93)
 
+-- 屏幕四边红晕：声音这条路在这客户端走不通（PlaySound 调用成功但静默），
+-- 所以用视觉硬提示补回来。纯色 SetColorTexture 是唯一验证过能渲染的着色方式
+local edgeTex = {}
+do
+    local r, g, b = 0.86, 0.05, 0.03
+    local function mk()
+        local t = UIParent:CreateTexture(nil, "BACKGROUND")
+        t:SetColorTexture(r, g, b, 0)
+        return t
+    end
+    edgeTex[1] = mk()  -- 上
+    edgeTex[1]:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+    edgeTex[1]:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, 0)
+    edgeTex[1]:SetHeight(96)
+    edgeTex[2] = mk()  -- 下
+    edgeTex[2]:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+    edgeTex[2]:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
+    edgeTex[2]:SetHeight(96)
+    edgeTex[3] = mk()  -- 左
+    edgeTex[3]:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+    edgeTex[3]:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+    edgeTex[3]:SetWidth(96)
+    edgeTex[4] = mk()  -- 右
+    edgeTex[4]:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, 0)
+    edgeTex[4]:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
+    edgeTex[4]:SetWidth(96)
+end
+
 local ALERT_IN, ALERT_HOLD, ALERT_OUT = 0.15, 2.8, 0.85
+local VIG_PEAK = 0.42
 local alertT = 0
+
+local function SetEdgeAlpha(a)
+    for i = 1, 4 do
+        if edgeTex[i] then edgeTex[i]:SetAlpha(a) end
+    end
+end
+
 alertFrame:SetScript("OnUpdate", function(self, dt)
     alertT = alertT + dt
+
+    -- 横幅：淡入 → 停 → 淡出，开头带一次回弹（1.12 → 1）
     if alertT < ALERT_IN then
         self:SetAlpha(alertT / ALERT_IN)
     elseif alertT < ALERT_IN + ALERT_HOLD then
@@ -618,8 +656,24 @@ alertFrame:SetScript("OnUpdate", function(self, dt)
     elseif alertT < ALERT_IN + ALERT_HOLD + ALERT_OUT then
         self:SetAlpha(1 - (alertT - ALERT_IN - ALERT_HOLD) / ALERT_OUT)
     else
+        self:SetAlpha(0)
         self:Hide()
     end
+    local sc = 1.12 - 0.12 * math.min(1, alertT / 0.2)
+    self:SetScale(sc)
+
+    -- 红晕：0.12 秒冲上来，停 0.4 秒，1.4 秒退干净
+    local va
+    if alertT < 0.12 then
+        va = VIG_PEAK * (alertT / 0.12)
+    elseif alertT < 0.5 then
+        va = VIG_PEAK
+    elseif alertT < 1.9 then
+        va = VIG_PEAK * (1 - (alertT - 0.5) / 1.4)
+    else
+        va = 0
+    end
+    SetEdgeAlpha(va)
 end)
 
 -- 提示音：这个客户端封了不少东西，两路交替试，响哪路算哪路
