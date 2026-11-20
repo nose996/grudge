@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.1"
+ns.version = "2.1.2"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -40,6 +40,8 @@ local DEFAULTS = {
     campingCount  = 3,
     nearbyWarn    = 120,
     nameplate     = true,    -- 姓名板缓存（提供等级/职业 + 仇人接近提醒）
+    nearbySound   = true,    -- 仇人接近时播放提示音
+    nearbyScreen  = true,    -- 仇人接近时屏幕中央弹一行字
     tooltip       = true,    -- 鼠标悬停玩家时显示交手记录
     debug         = false,
 }
@@ -817,9 +819,13 @@ local function HandlePlate(unit)
         if not e.lastWarn or (now - e.lastWarn) > KillListDB.settings.nearbyWarn then
             e.lastWarn = now
             local extra = e.star and "，重点目标" or ""
-            print(format("|cffff3333[仇人名单]|r 附近出现 %s（杀过你 %d 次%s）",
+            print(format("|cffff3333[记仇]|r 附近出现 %s（杀过你 %d 次%s）",
                 e.name, e.deaths, extra))
             ns.Log(format("附近出现 %s（杀过你 %d 次%s）", e.name, e.deaths, extra), "warn")
+            -- 打架时没人看聊天框：同时走声音 + 屏幕中央文字
+            if ns.NearbyAlert then
+                ns.NearbyAlert(e.name, e.deaths, e.star == true)
+            end
         end
     end
 end
@@ -1051,6 +1057,9 @@ function ns.PrintEnv()
         ((C_DeathRecap and C_DeathRecap.GetRecapEvents) and "存在" or "不存在"))
     print("|cff8ab4ff[记仇]|r 荣誉击杀模板：" ..
         (GetHonorPattern() and ("已解析 → " .. GetHonorPattern()) or "缺失"))
+    print("|cff8ab4ff[记仇]|r 声音接口：PlaySound=" .. tostring(PlaySound ~= nil)
+        .. " · PlaySoundFile=" .. tostring(PlaySoundFile ~= nil)
+        .. "（/kl beep 实测能不能响）")
 
     local k, d, n = ns.GetStats()
     print(format("|cff8ab4ff[记仇]|r 名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d))

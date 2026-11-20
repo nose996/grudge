@@ -578,6 +578,94 @@ ns.ToggleLog = function()
 end
 
 --------------------------------------------------------------
+-- 仇人接近提示：屏幕中央一行字 + 提示音
+-- 打架时聊天框根本看不见，所以这条路才是真正管用的提示
+--------------------------------------------------------------
+local alertFrame = CreateFrame("Frame", "KillListAlertFrame", UIParent, "BackdropTemplate")
+alertFrame:SetSize(560, 46)
+alertFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 150)
+alertFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+alertFrame:SetBackdrop({
+    bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+})
+alertFrame:SetBackdropColor(0.32, 0.02, 0.02, 0.92)
+alertFrame:SetBackdropBorderColor(1.00, 0.25, 0.20, 0.95)
+alertFrame:EnableMouse(false)
+alertFrame:Hide()
+
+local alertText = alertFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+alertText:SetPoint("CENTER", alertFrame, "CENTER", 0, 0)
+alertText:SetJustifyH("CENTER")
+alertText:SetWidth(540)
+-- 描边大字号：激战中快速扫一眼就能看清
+pcall(function()
+    local path = GameFontNormalLarge:GetFont()
+    alertText:SetFont(path, 22, "OUTLINE")
+end)
+alertText:SetTextColor(1, 0.93, 0.93)
+
+local ALERT_IN, ALERT_HOLD, ALERT_OUT = 0.15, 2.8, 0.85
+local alertT = 0
+alertFrame:SetScript("OnUpdate", function(self, dt)
+    alertT = alertT + dt
+    if alertT < ALERT_IN then
+        self:SetAlpha(alertT / ALERT_IN)
+    elseif alertT < ALERT_IN + ALERT_HOLD then
+        self:SetAlpha(1)
+    elseif alertT < ALERT_IN + ALERT_HOLD + ALERT_OUT then
+        self:SetAlpha(1 - (alertT - ALERT_IN - ALERT_HOLD) / ALERT_OUT)
+    else
+        self:Hide()
+    end
+end)
+
+-- 提示音：这个客户端封了不少东西，两路交替试，响哪路算哪路
+-- /kl beep 可以单独测，日志里会告诉你走的是哪一路
+local function PlayAlertSound()
+    local file = "Sound\\Interface\\AlarmClockWarning3.wav"
+    if PlaySoundFile then
+        local ok, res = pcall(PlaySoundFile, file, "Master")
+        if ok and res ~= false then return "文件音效" end
+    end
+    if PlaySound then
+        local ok = pcall(PlaySound, 8962)
+        if ok then return "编号音效" end
+    end
+    if PlaySound then
+        local ok = pcall(PlaySound, 1115)
+        if ok then return "编号音效(备用)" end
+    end
+    return "没有可用接口"
+end
+
+ns.PlayAlertSound = PlayAlertSound
+
+ns.ShowAlert = function(name, deaths, starred)
+    local tag = starred and "|cffffd700★ 重点目标   |r" or ""
+    alertText:SetText(format("%s|cffff5555仇人接近|r   %s|cffeeeeee（杀过你 %d 次）|r",
+        tag, name, deaths))
+    alertT = 0
+    alertFrame:SetAlpha(0)
+    alertFrame:Show()
+end
+
+ns.NearbyAlert = function(name, deaths, starred)
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+
+    if s.nearbyScreen ~= false then
+        ns.ShowAlert(name, deaths, starred)
+    end
+
+    if s.nearbySound ~= false then
+        PlayAlertSound()
+    end
+end
+
+--------------------------------------------------------------
 -- 小地图按钮：骑着圆环、可拖动、不敲命令也能开窗口
 --------------------------------------------------------------
 local MINIMAP = Minimap or UIParent
@@ -739,7 +827,7 @@ mmWatch:SetScript("OnEvent", function() UpdateMinimapPos() end)
 -- 设置面板：把常用命令做成按钮
 --------------------------------------------------------------
 local setFrame = CreateFrame("Frame", "KillListSettingsFrame", UIParent, "BackdropTemplate")
-setFrame:SetSize(300, 362)
+setFrame:SetSize(300, 430)
 setFrame:SetPoint("CENTER", UIParent, "CENTER", 250, 30)
 setFrame:SetFrameStrata("DIALOG")
 setFrame:SetToplevel(true)
@@ -765,13 +853,19 @@ local setClose = CreateFrame("Button", nil, setFrame, "UIPanelCloseButton")
 setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -3, -3)
 setClose:SetScript("OnClick", function() setFrame:Hide() end)
 
-local btnNearby, btnDebug, btnMinimap, btnTooltip, btnWipe, setStat
+local btnNearby, btnDebug, btnMinimap, btnTooltip, btnSound, btnScreen, btnWipe, setStat
 
 local function SyncSettings()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     if btnNearby then
         btnNearby:SetText("附近仇人提醒：" .. (s.nameplate and "|cff40ff40开|r" or "|cff888888关|r"))
+    end
+    if btnSound then
+        btnSound:SetText("接近时提示音：" .. ((s.nearbySound ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
+    end
+    if btnScreen then
+        btnScreen:SetText("接近时屏幕提示：" .. ((s.nearbyScreen ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
     end
     if btnDebug then
         btnDebug:SetText("调试输出：" .. (s.debug and "|cff40ff40开|r" or "|cff888888关|r"))
@@ -828,25 +922,45 @@ btnTooltip = MakeBtn(16, -136, 268, "", function()
     SyncSettings()
 end)
 
-MakeBtn(16, -166, 130, "打开日志窗", function()
+btnSound = MakeBtn(16, -166, 268, "", function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    s.nearbySound = not (s.nearbySound ~= false)
+    SyncSettings()
+end)
+
+btnScreen = MakeBtn(16, -196, 268, "", function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    s.nearbyScreen = not (s.nearbyScreen ~= false)
+    SyncSettings()
+end)
+
+MakeBtn(16, -226, 130, "打开日志窗", function()
     if ns.ToggleLog then ns.ToggleLog() end
 end)
 
-MakeBtn(154, -166, 130, "导出名单", function()
+MakeBtn(154, -226, 130, "导出名单", function()
     if ShowExport then ShowExport() end
 end)
 
-MakeBtn(16, -196, 130, "环境诊断", function()
+MakeBtn(16, -256, 130, "环境诊断", function()
     if ns.PrintEnv then ns.PrintEnv() end
 end)
 
-MakeBtn(154, -196, 130, "清理脏数据", function()
+MakeBtn(154, -256, 130, "清理脏数据", function()
     if ns.Clean then ns.Clean() end
     SyncSettings()
 end)
 
+MakeBtn(16, -286, 130, "试播提示音", function()
+    local how = PlayAlertSound()
+    print("|cff8ab4ff[记仇]|r 提示音试播：" .. tostring(how) ..
+        (how == "没有可用接口" and "（这个客户端把声音接口也关了，只能靠屏幕提示）" or ""))
+end)
+
 local wipeArmed = false
-btnWipe = MakeBtn(16, -226, 268, "清空全部名单", function()
+btnWipe = MakeBtn(154, -286, 130, "清空全部名单", function()
     if not wipeArmed then
         wipeArmed = true
         btnWipe:SetText("|cffff3333再点一次，确认清空|r")
@@ -863,13 +977,13 @@ btnWipe = MakeBtn(16, -226, 268, "清空全部名单", function()
 end)
 
 setStat = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -258)
+setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -318)
 
 local setHint = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -280)
+setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -340)
 setHint:SetWidth(266)
 setHint:SetJustifyH("LEFT")
-setHint:SetText("小地图边上那个「仇」字按钮就是入口：左键开名单，右键开设置，按住左键拖动能挪位置。\n姓名板建议一直开着，关掉后只能靠选中目标认人。")
+setHint:SetText("小地图边上那个「仇」字按钮就是入口：左键开名单，右键开设置，按住左键拖动能挪位置。\n姓名板建议一直开着，关掉后只能靠选中目标认人。\n提示音如果没声音，点一下「试播提示音」看聊天框里的诊断。")
 
 ns.OpenSettings = function()
     if not KillListDB then return end
@@ -915,6 +1029,13 @@ SlashCmdList["KILLLIST"] = function(msg)
             if setFrame:IsShown() then SyncSettings() end
         end
 
+    elseif msg == "beep" then
+        -- 试播：同时看到屏幕提示 + 听到声音，并能确认声音走的是哪一路
+        local how = PlayAlertSound()
+        print("|cff8ab4ff[记仇]|r 提示音试播：" .. tostring(how) ..
+            (how == "没有可用接口" and "（这个客户端把声音接口也关了，只能靠屏幕提示）" or ""))
+        ns.ShowAlert("测试目标 假人", 3, true)
+
     elseif msg == "stats" then
         local k, d, n = ns.GetStats()
         print(format("|cff8ab4ff[记仇]|r 总击杀 %d 次，总死亡 %d 次，名单 %d 人", k, d, n))
@@ -959,7 +1080,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then
