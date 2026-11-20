@@ -685,15 +685,18 @@ local function KitId(key, fallback)
     return fallback
 end
 
+-- 插件自带的提示音：不依赖客户端素材文件是否被裁，路径必然存在
+local SELF_WAV = "Interface\\AddOns\\" .. tostring(ADDON) .. "\\alert.wav"
+
 local SOUNDS = {
-    { name = "自动（复选框优先）",      kind = "auto" },
+    { name = "自动（自带 wav 优先）",    kind = "auto" },
+    { name = "自带 beep.wav",           kind = "file", arg = SELF_WAV },
     { name = "复选框 叮 856",           kind = "kit",  arg = 856,  kit = "IG_MAINMENU_OPTION_CHECKBOX_ON" },
     { name = "主菜单 852",              kind = "kit",  arg = 852,  kit = "IG_MAINMENU_OPTION" },
     { name = "退出 799",                kind = "kit",  arg = 799,  kit = "GS_TITLE_OPTION_EXIT" },
     { name = "猫叫哨（系统 ogg）",       kind = "file", arg = "Sound\\Character\\EmoteCatCallWhistle02.ogg" },
     { name = "闹钟警告 wav",             kind = "file", arg = "Sound\\Interface\\AlarmClockWarning3.wav" },
     { name = "复选框 wav",               kind = "file", arg = "Sound\\Interface\\igMainMenuOptionCheckBoxOn.wav" },
-    { name = "地图标记 wav",             kind = "file", arg = "Sound\\Interface\\MapPing.wav" },
 }
 ns.SOUNDS = SOUNDS
 
@@ -723,12 +726,15 @@ local function FireSound(idx, channel)
     end
 
     if p.kind == "auto" then
-        local ok, info = PKit(KitId("IG_MAINMENU_OPTION_CHECKBOX_ON", 856))
-        if ok then return "自动 → 637/856 复选框（" .. info .. "）" end
-        ok, info = PKit(799)
-        if ok then return "自动 → 799 退出音" end
+        -- 1) 插件自带 wav：文件一定在，唯一能自己控制的变量
+        local ok, info = PFile(SELF_WAV)
+        if ok then return "自动 → 自带 beep.wav" end
+        -- 2) 系统 ogg（163UI 在用）
         ok, info = PFile("Sound\\Character\\EmoteCatCallWhistle02.ogg")
         if ok then return "自动 → 猫叫哨 ogg" end
+        -- 3) 编号音效
+        ok, info = PKit(KitId("IG_MAINMENU_OPTION_CHECKBOX_ON", 856))
+        if ok then return "自动 → 编号 856" end
         return "自动 → 三条路都没发出去（" .. tostring(info) .. "）"
 
     elseif p.kind == "kit" then
