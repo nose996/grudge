@@ -688,16 +688,21 @@ end
 -- 插件自带的提示音：不依赖客户端素材文件是否被裁，路径必然存在
 local SELF_WAV = "Interface\\AddOns\\" .. tostring(ADDON) .. "\\alert.wav"
 
--- 实测（2026-11-20）：本服插件能出声的只有两条路——
+-- 实测（2026-11-20）：本服插件能出声的有三条路——
 --   ① PlaySound(编号) 走客户端内部音效库（856/852/799 已验证有声音）
---   ② PlaySoundFile 读 AddOns 目录下插件自带的 wav
--- 而 Sound\... 系统素材路径一律被拒（调用不报错但静默），别再往里塞候选了。
+--   ② PlaySoundFile(数字FileDataID) 走客户端文件表（SilverDragon 就是这么播稀有提示音的）
+--   ③ PlaySoundFile("Interface\\AddOns\\<插件>\\x.wav") 插件自带文件
+-- 而 "Sound\\..." 这类系统素材**字符串路径**一律被拒（调用不报错但静默）。
 local SOUNDS = {
     { name = "自动（自带 wav 优先）",    kind = "auto" },
     { name = "自带 beep.wav",           kind = "file", arg = SELF_WAV },
     { name = "复选框 叮 856",           kind = "kit",  arg = 856,  kit = "IG_MAINMENU_OPTION_CHECKBOX_ON" },
     { name = "主菜单 852",              kind = "kit",  arg = 852,  kit = "IG_MAINMENU_OPTION" },
     { name = "退出 799",                kind = "kit",  arg = 799,  kit = "GS_TITLE_OPTION_EXIT" },
+    { name = "战鼓（NPCScan 同款）",     kind = "fdid", arg = 567275 },
+    { name = "亡灵号角（NPCScan 旧版）",  kind = "fdid", arg = 567386 },
+    { name = "雷劈",                    kind = "fdid", arg = 566202 },
+    { name = "巫妖王「我看见你」",        kind = "fdid", arg = 554236 },
 }
 ns.SOUNDS = SOUNDS
 
@@ -744,6 +749,16 @@ local function FireSound(idx, channel)
         local ok, info = PKit(id)
         if not ok then return p.name .. " → " .. info end
         return p.name .. " → 已发送（编号 " .. tostring(id) .. "）"
+
+    elseif p.kind == "fdid" then
+        -- 数字 FileDataID：SilverDragon 播稀有提示音就是这条路，还带着 Master 通道
+        if not PlaySoundFile then return p.name .. " → PlaySoundFile 不存在" end
+        local ok = pcall(PlaySoundFile, p.arg)
+        if not ok then
+            local ok2 = pcall(PlaySoundFile, p.arg, "Master")
+            if not ok2 then return p.name .. " → 报错" end
+        end
+        return p.name .. " → 已发送（ID " .. tostring(p.arg) .. "）"
     end
 
     local ok, info = PFile(p.arg)
