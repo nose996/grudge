@@ -1,5 +1,5 @@
 --[[
-    KillList · 界面层
+    记仇 · 界面层
     名单浏览、搜索、标记、备注、导出
 ]]
 
@@ -38,7 +38,7 @@ frame:Hide()
 
 local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("TOP", frame, "TOP", 0, -13)
-title:SetText("|cffffd700KillList|r  仇人名单")
+title:SetText("|cffffd700记仇|r  ·  仇人名单")
 
 local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
@@ -510,7 +510,7 @@ logFrame:Hide()
 
 local logTitle = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 logTitle:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 12, -10)
-logTitle:SetText("KillList 日志")
+logTitle:SetText("记仇 日志")
 
 local logClose = CreateFrame("Button", nil, logFrame, "UIPanelCloseButton")
 logClose:SetPoint("TOPRIGHT", logFrame, "TOPRIGHT", -3, -3)
@@ -555,7 +555,7 @@ btnLogCopy:SetSize(76, 20)
 btnLogCopy:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 96, 10)
 btnLogCopy:SetText("导出")
 btnLogCopy:SetScript("OnClick", function()
-    exportTitle:SetText("KillList 日志")
+    exportTitle:SetText("记仇 日志")
     exportHint:SetText("按 Ctrl+A 全选，Ctrl+C 复制")
     exportBox:SetText(ComposeLogText())
     exportFrame:Show()
@@ -677,7 +677,7 @@ mmBtn:SetScript("OnEnter", function(self)
     self:SetAlpha(1)
     ApplyMinimapSkin(true)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:AddLine("KillList 仇人名单")
+    GameTooltip:AddLine("记仇 · PVP 交手记录")
     GameTooltip:AddLine("左键：打开 / 关闭名单", 1, 0.82, 0)
     GameTooltip:AddLine("右键：打开设置", 0.75, 0.75, 0.75)
     GameTooltip:AddLine("按住左键拖动：挪到小地图别的位置", 0.6, 0.6, 0.6)
@@ -759,7 +759,7 @@ setFrame:Hide()
 
 local setTitle = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 setTitle:SetPoint("TOP", setFrame, "TOP", 0, -13)
-setTitle:SetText("|cffffd700KillList|r  设置")
+setTitle:SetText("|cffffd700记仇|r  设置")
 
 local setClose = CreateFrame("Button", nil, setFrame, "UIPanelCloseButton")
 setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -3, -3)
@@ -910,14 +910,14 @@ SlashCmdList["KILLLIST"] = function(msg)
     if msg == "debug" then
         if KillListDB and KillListDB.settings then
             KillListDB.settings.debug = not KillListDB.settings.debug
-            print("|cff8ab4ff[KillList]|r 调试输出已" ..
+            print("|cff8ab4ff[记仇]|r 调试输出已" ..
                 (KillListDB.settings.debug and "开启" or "关闭"))
             if setFrame:IsShown() then SyncSettings() end
         end
 
     elseif msg == "stats" then
         local k, d, n = ns.GetStats()
-        print(format("|cff8ab4ff[KillList]|r 总击杀 %d 次，总死亡 %d 次，名单 %d 人", k, d, n))
+        print(format("|cff8ab4ff[记仇]|r 总击杀 %d 次，总死亡 %d 次，名单 %d 人", k, d, n))
 
     elseif msg == "export" then
         ShowExport()
@@ -941,7 +941,7 @@ SlashCmdList["KILLLIST"] = function(msg)
             else
                 s.nameplate = not s.nameplate
             end
-            print("|cff8ab4ff[KillList]|r 姓名板扫描已" .. (s.nameplate and "开启" or "关闭"))
+            print("|cff8ab4ff[记仇]|r 姓名板扫描已" .. (s.nameplate and "开启" or "关闭"))
             if setFrame:IsShown() then SyncSettings() end
         end
 
@@ -952,14 +952,14 @@ SlashCmdList["KILLLIST"] = function(msg)
         if ns.AddManual then ns.AddManual(msg:gsub("^add%s+", "")) end
 
     elseif msg == "add" then
-        print("|cff8ab4ff[KillList]|r 用法：/kl add 名字（自动漏记时手动补一条击杀）")
+        print("|cff8ab4ff[记仇]|r 用法：/kl add 名字（自动漏记时手动补一条击杀）")
 
     elseif msg == "reset" then
         if ns.Reset then ns.Reset() end
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[KillList]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then

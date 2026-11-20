@@ -1,5 +1,5 @@
 --[[
-    KillList · 核心层
+    记仇 · 核心层
     《魔兽世界：无限》(WoW Forever) / 客户端 1.60.1 / Interface 16001
 
     背景：这个客户端把 COMBAT_LOG_EVENT_UNFILTERED 和
@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.0"
+ns.version = "2.1.1"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -114,7 +114,7 @@ function ns.Notify(what)
     for i = 1, #ns.listeners do
         local ok, err = pcall(ns.listeners[i], what)
         if not ok and KillListDB and KillListDB.settings and KillListDB.settings.debug then
-            print("|cffff7777[KillList]|r 界面刷新异常：" .. tostring(err))
+            print("|cffff7777[记仇]|r 界面刷新异常：" .. tostring(err))
         end
     end
 end
@@ -158,7 +158,7 @@ function ns.Debug(...)
 
     local dbg = KillListDB and KillListDB.settings and KillListDB.settings.debug
     if dbg then
-        print("|cff8ab4ff[KillList 调试]|r", msg)
+        print("|cff8ab4ff[记仇 调试]|r", msg)
         ns.Log(msg, "info")
     end
 end
@@ -946,20 +946,20 @@ function ns.Reset()
     recentKill  = {}
     recentDeath = {}
     ns.Notify("record")
-    print("|cff8ab4ff[KillList]|r 名单已清空，从现在开始记真的了。")
+    print("|cff8ab4ff[记仇]|r 名单已清空，从现在开始记真的了。")
 end
 
 -- 手动清掉非玩家痕迹
 function ns.Clean()
     local n = PurgeGarbage()
-    print(format("|cff8ab4ff[KillList]|r 清掉了 %d 条无效记录。", n))
+    print(format("|cff8ab4ff[记仇]|r 清掉了 %d 条无效记录。", n))
     ns.Notify("record")
     return n
 end
 
 -- 姓名接口诊断：对着一个玩家敲 /kl name，把各接口给的名字打出来
 function ns.DumpName()
-    print("|cff8ab4ff[KillList]|r 姓名接口诊断（先选中一个玩家当目标）")
+    print("|cff8ab4ff[记仇]|r 姓名接口诊断（先选中一个玩家当目标）")
     local unit = "target"
     print("  target 存在：" .. ((UnitExists and UnitExists(unit)) and "是" or "否"))
     print("  UnitName：" .. tostring(select(1, UnitName(unit))))
@@ -996,16 +996,16 @@ end
 -- 手动补记：自动链路万一漏了（比如杀灰名小号没有荣誉），用这个补
 function ns.AddManual(name)    name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
     if name == "" then
-        print("|cff8ab4ff[KillList]|r 用法：/kl add 名字")
+        print("|cff8ab4ff[记仇]|r 用法：/kl add 名字")
         return
     end
     local info = LookupCacheByName(name)
     local e = Record(info and info.name or name, "kill", info and info.guid, true, "manual")
     if e then
-        print("|cff8ab4ff[KillList]|r 已补记一条击杀：" .. e.name)
+        print("|cff8ab4ff[记仇]|r 已补记一条击杀：" .. e.name)
         ns.Log("手动补记击杀：" .. e.name, "kill")
     else
-        print("|cff8ab4ff[KillList]|r 没记上（名字无效，或这是你自己/队友）")
+        print("|cff8ab4ff[记仇]|r 没记上（名字无效，或这是你自己/队友）")
     end
 end
 
@@ -1030,30 +1030,30 @@ end
 --------------------------------------------------------------
 function ns.PrintEnv()
     local ver, build, _, toc = GetBuildInfo()
-    print(format("|cff8ab4ff[KillList]|r 客户端 %s · build %s · interface %s",
+    print(format("|cff8ab4ff[记仇]|r 客户端 %s · build %s · interface %s",
         tostring(ver), tostring(build), tostring(toc)))
-    print("|cff8ab4ff[KillList]|r 我的 GUID：" .. tostring(UnitGUID("player")))
-    print("|cff8ab4ff[KillList]|r 消息事件：战斗信息=" .. tostring(ns.miscOK) .. " · 系统消息=" .. tostring(ns.systemOK))
-    print("|cff8ab4ff[KillList]|r 命中消息=" .. tostring(ns.selfHitsOK) .. " · 法术命中=" .. tostring(ns.selfSpellsOK)
+    print("|cff8ab4ff[记仇]|r 我的 GUID：" .. tostring(UnitGUID("player")))
+    print("|cff8ab4ff[记仇]|r 消息事件：战斗信息=" .. tostring(ns.miscOK) .. " · 系统消息=" .. tostring(ns.systemOK))
+    print("|cff8ab4ff[记仇]|r 命中消息=" .. tostring(ns.selfHitsOK) .. " · 法术命中=" .. tostring(ns.selfSpellsOK)
         .. " · 宠物命中=" .. tostring(ns.petHitsOK) .. " · 宠物法术=" .. tostring(ns.petSpellsOK)
         .. " · PVP击杀数=" .. tostring(ns.pvpKillsOK) .. " · 姓名板移除=" .. tostring(ns.plateGoneOK) .. " · 选中变化=" .. tostring(ns.targetOK))
 
     local s = KillListDB and KillListDB.settings
-    print(format("|cff8ab4ff[KillList]|r 姓名板 %s · 调试 %s",
+    print(format("|cff8ab4ff[记仇]|r 姓名板 %s · 调试 %s",
         (s and s.nameplate) and "开" or "关",
         (s and s.debug) and "开" or "关"))
 
-    print("|cff8ab4ff[KillList]|r 旧战斗日志接口：" ..
+    print("|cff8ab4ff[记仇]|r 旧战斗日志接口：" ..
         (CombatLogGetCurrentEventInfo and "存在" or "已被移除（正常）"))
-    print("|cff8ab4ff[KillList]|r PARTY_KILL 事件：" ..
+    print("|cff8ab4ff[记仇]|r PARTY_KILL 事件：" ..
         (ns.partyKillOK and "可注册" or "不可用"))
-    print("|cff8ab4ff[KillList]|r 死亡回顾 C_DeathRecap：" ..
+    print("|cff8ab4ff[记仇]|r 死亡回顾 C_DeathRecap：" ..
         ((C_DeathRecap and C_DeathRecap.GetRecapEvents) and "存在" or "不存在"))
-    print("|cff8ab4ff[KillList]|r 荣誉击杀模板：" ..
+    print("|cff8ab4ff[记仇]|r 荣誉击杀模板：" ..
         (GetHonorPattern() and ("已解析 → " .. GetHonorPattern()) or "缺失"))
 
     local k, d, n = ns.GetStats()
-    print(format("|cff8ab4ff[KillList]|r 名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d))
+    print(format("|cff8ab4ff[记仇]|r 名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d))
 
     -- 本服没有 GetPVPKills，别的可能在。挨个试一遍，能用的直接显示数值
     local probes = {
@@ -1069,7 +1069,7 @@ function ns.PrintEnv()
                     or ("报错 " .. tostring(a)))
         end
     end
-    print("|cff8ab4ff[KillList]|r PVP 计数接口：" ..
+    print("|cff8ab4ff[记仇]|r PVP 计数接口：" ..
         (#found > 0 and table.concat(found, " · ") or "一个都不存在"))
 end
 
@@ -1107,7 +1107,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
             InitDB()
             local n = PurgeGarbage()
             if n > 0 then
-                print(format("|cff8ab4ff[KillList]|r 清理了 %d 条老版本的无效记录（名字被存成了 GUID）", n))
+                print(format("|cff8ab4ff[记仇]|r 清理了 %d 条老版本的无效记录（名字被存成了 GUID）", n))
             end
             ns.Notify("init")
         end
@@ -1182,7 +1182,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
         -- 被暴雪拦下来的具体函数名会在这里显示
-        print(format("|cffff3333[KillList 拦截]|r 插件 %s 调用了受限函数：%s",
+        print(format("|cffff3333[记仇 拦截]|r 插件 %s 调用了受限函数：%s",
             tostring((...)), tostring((select(2, ...)))))
     end
 end)

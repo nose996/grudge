@@ -1,4 +1,4 @@
-# KillList · 仇人名单
+# 记仇 · PVP 交手记录
 
 《魔兽世界："无限"》插件（客户端 1.60.1 / Interface 16001）。自动记录**谁杀过你**、**你杀过谁**，形成可搜索、可标记、可导出的名单。
 
@@ -6,19 +6,19 @@
 
 ## 安装
 
-把整个 `KillList` 文件夹放进：
+把整个 `Grudge` 文件夹放进：
 
 ```
 D:\wow\World of Warcraft\_forever_\Interface\AddOns\
 ```
 
 ```
-_forever_\Interface\AddOns\KillList\KillList.toc
-_forever_\Interface\AddOns\KillList\Core.lua
-_forever_\Interface\AddOns\KillList\UI.lua
+_forever_\Interface\AddOns\Grudge\Grudge.toc
+_forever_\Interface\AddOns\Grudge\Core.lua
+_forever_\Interface\AddOns\Grudge\UI.lua
 ```
 
-重启客户端，在角色选择界面的「插件」列表里确认 `KillList 仇人名单` 已勾选。
+重启客户端，在角色选择界面的「插件」列表里确认 `记仇 · PVP 交手记录` 已勾选。
 
 ## 怎么打开
 
@@ -95,7 +95,7 @@ WTF\Account\<你的账号>\SavedVariables\KillList.lua
 
 写得进的时机是正常退出游戏或 `/reload`，游戏崩溃的话最近一段记录会丢。
 
-- 更新插件、删掉 `AddOns\KillList` 重装 → **不会丢**（数据在 `WTF` 下，和插件目录分开）
+- 更新插件、删掉 `AddOns\Grudge` 重装 → **不会丢**（数据在 `WTF` 下，和插件目录分开）
 - 换电脑、重装客户端、删掉整个 `WTF` → **会丢**，除非把这个 `.lua` 单独备份
 
 **迁移到新电脑**：把 `SavedVariables\KillList.lua` 拷到新机器的同样位置（`SavedVariables` 文件夹不存在就自己建一个）。进游戏用 `/kl stats` 核对总数，对得上就说明成功了。
@@ -128,4 +128,4 @@ WTF\Account\<你的账号>\SavedVariables\KillList.lua
 - `丢弃 NPC 击杀：「xxx」（姓名板从没见过）` —— 等过 1 秒缓存里仍然没有这个人
 - `PVP 事件没记新记录（多半这刀已记过）` —— 正常现象，多半是 `PARTY_KILL` 已经先记了
 - `死亡回顾里没有找到玩家来源`
-- `[KillList 拦截] 插件 KillList 调用了受限函数：xxx`
+- `[记仇 拦截] 插件 Grudge 调用了受限函数：xxx`
