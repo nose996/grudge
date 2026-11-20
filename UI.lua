@@ -5,7 +5,101 @@
 
 local ADDON, ns = ...
 
-local ROW_H = 26
+local ROW_H = 24
+
+--------------------------------------------------------------
+-- 统一视觉：一套配色 + 一个扁平按钮皮肤
+-- 本服可靠可用的只有 SetColorTexture 和字体（外部贴图会渲染成红块），
+-- 所以整个界面靠色块 + 1px 细线搭，不用任何 UI-* 素材
+--------------------------------------------------------------
+local GOLD = { 0.847, 0.706, 0.416 }
+local TXT  = { 0.93, 0.90, 0.83 }
+local DIM  = { 0.60, 0.58, 0.54 }
+
+local function FlatButton(b)
+    if not b or b.__flat then return b end
+    b.__flat = true
+
+    for _, m in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetDisabledTexture", "GetHighlightTexture" }) do
+        local fn = b[m]
+        if fn then
+            local t = fn(b)
+            if t then t:SetAlpha(0) end
+        end
+    end
+
+    local bg = b:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(b)
+
+    local edges = {}
+    for i = 1, 4 do
+        local e = b:CreateTexture(nil, "BORDER")
+        e:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.28)
+        edges[i] = e
+    end
+    edges[1]:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    edges[1]:SetPoint("TOPRIGHT", b, "TOPRIGHT", 0, 0)
+    edges[1]:SetHeight(1)
+    edges[2]:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+    edges[2]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+    edges[2]:SetHeight(1)
+    edges[3]:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    edges[3]:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+    edges[3]:SetWidth(1)
+    edges[4]:SetPoint("TOPRIGHT", b, "TOPRIGHT", 0, 0)
+    edges[4]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+    edges[4]:SetWidth(1)
+
+    local function paint(r, g, bl, a, edgeA)
+        bg:SetColorTexture(r, g, bl, a)
+        for i = 1, 4 do edges[i]:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], edgeA) end
+    end
+    local function paintNormal() paint(0.075, 0.065, 0.055, 0.90, 0.26) end
+    local function paintSel()    paint(0.260, 0.200, 0.100, 0.95, 0.80) end
+    paintNormal()
+
+    -- 页签这类需要「选中」状态的按钮用得到
+    b.__setActive = function(on)
+        b.__on = on and true or false
+        if b.__on then paintSel() else paintNormal() end
+    end
+
+    b:HookScript("OnEnter",     function() paint(0.150, 0.125, 0.095, 0.95, 0.62) end)
+    b:HookScript("OnLeave",     function() if b.__on then paintSel() else paintNormal() end end)
+    b:HookScript("OnMouseDown", function() paint(0.035, 0.030, 0.026, 0.95, 0.85) end)
+    b:HookScript("OnMouseUp",   function()
+        if b.__on then paintSel() else paint(0.150, 0.125, 0.095, 0.95, 0.62) end
+    end)
+
+    return b
+end
+
+-- 顶部那种「日志 / 设置」小链接，不要底板，只留字
+local function LinkButton(parent, w, text, x, onClick)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(w, 18)
+    b:SetPoint("TOPRIGHT", parent, "TOPRIGHT", x, -16)
+    local t = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    t:SetAllPoints(b)
+    t:SetJustifyH("CENTER")
+    t:SetText(text)
+    t:SetTextColor(0.70, 0.68, 0.63)
+    b:SetScript("OnEnter", function() t:SetTextColor(GOLD[1], GOLD[2], GOLD[3]) end)
+    b:SetScript("OnLeave", function() t:SetTextColor(0.70, 0.68, 0.63) end)
+    b:SetScript("OnClick", function() if onClick then onClick() end end)
+    b.t = t
+    return b
+end
+
+-- 一根 1px 的分隔线
+local function Hairline(parent, y, alpha)
+    local t = parent:CreateTexture(nil, "ARTWORK")
+    t:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], alpha or 0.28)
+    t:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, y)
+    t:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -18, y)
+    t:SetHeight(1)
+    return t
+end
 
 local kind       = "death"   -- death = 杀过我的；kill = 我杀过的
 local selected   = nil
@@ -37,67 +131,97 @@ frame:SetBackdrop({
 frame:Hide()
 
 local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-title:SetPoint("TOP", frame, "TOP", 0, -13)
-title:SetText("|cffffd700记仇|r  ·  仇人名单")
+title:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, -14)
+title:SetText("|cffd8b46a记仇|r")
+
+local subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+subtitle:SetPoint("LEFT", title, "RIGHT", 8, -1)
+subtitle:SetText("|cff8a8279PVP 交手记录|r")
 
 local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
 closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
-local btnOpenLog = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-btnOpenLog:SetSize(46, 20)
-btnOpenLog:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -12)
-btnOpenLog:SetText("日志")
-btnOpenLog:SetScript("OnClick", function() if ns.ToggleLog then ns.ToggleLog() end end)
+local btnOpenLog = LinkButton(frame, 34, "日志", -40, function()
+    if ns.ToggleLog then ns.ToggleLog() end
+end)
+local btnOpenSet = LinkButton(frame, 34, "设置", -78, function()
+    if ns.OpenSettings then ns.OpenSettings() end
+end)
 
-local btnOpenSet = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-btnOpenSet:SetSize(46, 20)
-btnOpenSet:SetPoint("RIGHT", btnOpenLog, "LEFT", -4, 0)
-btnOpenSet:SetText("设置")
-btnOpenSet:SetScript("OnClick", function() if ns.OpenSettings then ns.OpenSettings() end end)
+Hairline(frame, -36, 0.22)
 
 --------------------------------------------------------------
 -- 两个页签
 --------------------------------------------------------------
 local tabDeath = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-tabDeath:SetSize(150, 24)
-tabDeath:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -38)
+tabDeath:SetSize(150, 26)
+tabDeath:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -46)
 tabDeath:SetScript("OnClick", function() SetKind("death") end)
+FlatButton(tabDeath)
 
 local tabKill = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-tabKill:SetSize(150, 24)
-tabKill:SetPoint("LEFT", tabDeath, "RIGHT", 8, 0)
+tabKill:SetSize(150, 26)
+tabKill:SetPoint("LEFT", tabDeath, "RIGHT", 6, 0)
 tabKill:SetScript("OnClick", function() SetKind("kill") end)
-
-local mark = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-mark:SetText("|cffffd700▲|r")
+FlatButton(tabKill)
 
 --------------------------------------------------------------
 -- 搜索
 --------------------------------------------------------------
-local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-searchLabel:SetText("搜索")
-
+local searchHint
 local search = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-search:SetSize(300, 22)
-search:SetPoint("TOPLEFT", frame, "TOPLEFT", 44, -72)
+search:SetSize(444, 22)
+search:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -80)
 search:SetAutoFocus(false)
-search:SetTextInsets(4, 4, 0, 0)
+search:SetTextInsets(8, 8, 0, 0)
 search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 search:SetScript("OnTextChanged", function(self, userInput)
     if not userInput then return end
     filterText = self:GetText() or ""
+    if searchHint then searchHint:SetShown((self:GetText() or "") == "") end
     if RefreshList then RefreshList() end
 end)
+search:SetScript("OnEditFocusGained", function() if searchHint then searchHint:Hide() end end)
+search:SetScript("OnEditFocusLost", function(self)
+    if searchHint then searchHint:SetShown((self:GetText() or "") == "") end
+end)
 
-searchLabel:SetPoint("RIGHT", search, "LEFT", -8, 0)
+searchHint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+searchHint:SetPoint("LEFT", search, "LEFT", 10, 0)
+searchHint:SetText("搜索名字…")
 
 --------------------------------------------------------------
 -- 列表
 --------------------------------------------------------------
+-- 列表区垫一层深色底板，让表头和数据从木纹背景里分出来
+local listBg = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+listBg:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -100)
+listBg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 200)
+listBg:SetBackdrop({
+    bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 8,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+})
+listBg:SetBackdropColor(0, 0, 0, 0.38)
+listBg:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.18)
+
+local function HeadText(text, x, w, align)
+    local t = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -104)
+    t:SetWidth(w)
+    t:SetJustifyH(align or "LEFT")
+    t:SetText("|cff7d766c" .. text .. "|r")
+    return t
+end
+HeadText("名字", 26, 168)
+HeadText("等级 / 公会", 198, 100)
+HeadText("交手", 306, 60)
+
 local scroll = CreateFrame("ScrollFrame", "KillListScrollFrame", frame, "UIPanelScrollFrameTemplate")
-scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -102)
-scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -38, 208)
+scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -122)
+scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -38, 206)
 
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(1, 1)
@@ -117,7 +241,7 @@ local function CreateRow(i)
 
     r.sel = r:CreateTexture(nil, "BACKGROUND", nil, 1)
     r.sel:SetAllPoints()
-    r.sel:SetColorTexture(0.2, 0.55, 1, 0.28)
+    r.sel:SetColorTexture(0.85, 0.64, 0.24, 0.26)
     r.sel:Hide()
 
     r.nameFS = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -141,8 +265,8 @@ local function CreateRow(i)
     r.whenFS:SetPoint("RIGHT", r, "RIGHT", -6, 0)
     r.whenFS:SetJustifyH("RIGHT")
 
-    r:SetScript("OnEnter", function(self) self.bg:SetColorTexture(1, 1, 1, 0.12) end)
-    r:SetScript("OnLeave", function(self) self.bg:SetColorTexture(1, 1, 1, 0.03) end)
+    r:SetScript("OnEnter", function(self) self.bg:SetColorTexture(1, 1, 1, 0.09) end)
+    r:SetScript("OnLeave", function(self) self.bg:SetColorTexture(1, 1, 1, self.__base or 0.018) end)
     r:SetScript("OnClick", function(self)
         if self.entry then SelectEntry(self.entry) end
     end)
@@ -152,7 +276,8 @@ end
 
 local function UpdateRow(r, entry, index)
     r.entry = entry
-    r.bg:SetColorTexture(1, 1, 1, (index % 2 == 0) and 0.05 or 0.02)
+    r.__base = (index % 2 == 0) and 0.05 or 0.018
+    r.bg:SetColorTexture(1, 1, 1, r.__base)
 
     if selected == entry then
         r.sel:Show()
@@ -169,7 +294,7 @@ local function UpdateRow(r, entry, index)
 
     local prefix = ""
     if entry.ignored then prefix = prefix .. "|cff777777[忽略] |r" end
-    if entry.star    then prefix = prefix .. "|cffffd700★ |r" end
+    if entry.star    then prefix = prefix .. "|cffd8b46a★ |r" end
 
     r.nameFS:SetText(prefix .. entry.name)
 
@@ -213,12 +338,11 @@ RefreshList = function()
     tabKill:SetText(format("我杀过的 (%d)", cKill))
 
     local k, d, n = ns.GetStats()
-    local me = UnitName("player") or "未知角色"
-    statFS:SetText(format("|cffd8b46a%s|r  ·  总击杀 %d  ·  总死亡 %d  ·  名单 %d 人", me, k, d, n))
+    statFS:SetText(format("|cff8a8279累计|r  击杀 %d   ·   死亡 %d   ·   名单 %d 人", k, d, n))
 
     if periodFS and ns.GetPeriodStats then
         local kt, dt, kw, dw = ns.GetPeriodStats()
-        periodFS:SetText(format("今天 %d 杀 %d 死   ·   本周 %d 杀 %d 死", kt, dt, kw, dw))
+        periodFS:SetText(format("|cff8a8279今天|r  %d 杀 %d 死      |cff8a8279本周|r  %d 杀 %d 死", kt, dt, kw, dw))
     end
 
     if #list == 0 then
@@ -245,21 +369,21 @@ detail:SetBackdrop({
     tile = true, tileSize = 16, edgeSize = 12,
     insets = { left = 3, right = 3, top = 3, bottom = 3 },
 })
-detail:SetBackdropColor(0, 0, 0, 0.35)
-detail:SetBackdropBorderColor(1, 1, 1, 0.15)
+detail:SetBackdropColor(0, 0, 0, 0.45)
+detail:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.20)
 
 local dName = detail:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-dName:SetPoint("TOPLEFT", detail, "TOPLEFT", 2, 0)
+dName:SetPoint("TOPLEFT", detail, "TOPLEFT", 6, -8)
 
 local dMeta = detail:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-dMeta:SetPoint("TOPLEFT", detail, "TOPLEFT", 2, -26)
+dMeta:SetPoint("TOPLEFT", detail, "TOPLEFT", 6, -34)
 dMeta:SetWidth(450)
 dMeta:SetJustifyH("LEFT")
 dMeta:SetWordWrap(false)
 
 local dNote = CreateFrame("EditBox", nil, detail, "InputBoxTemplate")
 dNote:SetSize(240, 20)
-dNote:SetPoint("TOPLEFT", detail, "TOPLEFT", 4, -48)
+dNote:SetPoint("TOPLEFT", detail, "TOPLEFT", 6, -58)
 dNote:SetAutoFocus(false)
 dNote:SetTextInsets(4, 4, 0, 0)
 dNote:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -277,15 +401,20 @@ dNoteHint:SetText("备注，回车保存")
 
 local function MakeDetailButton(text, x)
     local b = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
-    b:SetSize(84, 22)
-    b:SetPoint("TOPLEFT", detail, "TOPLEFT", x, -78)
+    b:SetSize(88, 22)
+    b:SetPoint("TOPLEFT", detail, "TOPLEFT", x, -88)
     b:SetText(text)
+    FlatButton(b)
     return b
 end
 
-local btnStar   = MakeDetailButton("标星", 0)
-local btnIgnore = MakeDetailButton("忽略", 90)
-local btnDelete = MakeDetailButton("删除", 180)
+local btnStar   = MakeDetailButton("标星", 6)
+local btnIgnore = MakeDetailButton("忽略", 102)
+local btnDelete = MakeDetailButton("删除", 198)
+do
+    local fs = btnDelete:GetFontString()
+    if fs then fs:SetTextColor(0.86, 0.52, 0.46) end
+end
 
 btnStar:SetScript("OnClick", function()
     if not selected then return end
@@ -377,27 +506,38 @@ SetKind = function(k)
     RefreshList()
     UpdateDetail()
 
-    mark:ClearAllPoints()
-    mark:SetPoint("BOTTOM", (k == "death") and tabDeath or tabKill, "TOP", 0, -2)
+    local function tone(tab, on)
+        if tab.__setActive then tab.__setActive(on) end
+        local fs = tab.GetFontString and tab:GetFontString()
+        if fs then
+            if on then fs:SetTextColor(1, 0.87, 0.60)
+            else fs:SetTextColor(0.72, 0.70, 0.66) end
+        end
+    end
+    tone(tabDeath, k == "death")
+    tone(tabKill,  k == "kill")
 end
 
 --------------------------------------------------------------
 -- 底部：导出与统计
 --------------------------------------------------------------
 statFS = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-statFS:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 28)
+statFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 22)
 statFS:SetText("")
 
--- 今天 / 本周的即时战绩，放在导出按钮上方一行
+-- 今天 / 本周的即时战绩
 periodFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-periodFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 52)
+periodFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 44)
 periodFS:SetText("")
+
+Hairline(frame, -538, 0.18)
 
 local btnExport = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 btnExport:SetSize(110, 24)
-btnExport:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 18, 20)
+btnExport:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 16)
 btnExport:SetText("导出名单")
 btnExport:SetScript("OnClick", function() ShowExport() end)
+FlatButton(btnExport)
 
 --------------------------------------------------------------
 -- 导出窗口
@@ -416,7 +556,7 @@ exportFrame:Hide()
 
 local exportTitle = exportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 exportTitle:SetPoint("TOP", exportFrame, "TOP", 0, -13)
-exportTitle:SetText("|cffffd700导出名单|r")
+exportTitle:SetText("|cffd8b46a导出名单|r")
 
 local exportClose = CreateFrame("Button", nil, exportFrame, "UIPanelCloseButton")
 exportClose:SetPoint("TOPRIGHT", exportFrame, "TOPRIGHT", -3, -3)
@@ -441,7 +581,7 @@ end)
 ShowExport = function()
     if not KillListDB then return end
     -- 日志窗的「导出」按钮会临时改标题，这里每次都复原本窗口的文案
-    exportTitle:SetText("|cffffd700导出名单|r")
+    exportTitle:SetText("|cffd8b46a导出名单|r")
     exportHint:SetText("点进输入框按 Ctrl+A 全选、Ctrl+C 复制，可直接贴到群里或攻略站。")
     exportBox:SetText(ns.BuildExport(kind))
     exportFrame:Show()
@@ -450,7 +590,7 @@ ShowExport = function()
 end
 -- 复制诊断信息：把一小段环境摘要塞进同一个导出窗，Ctrl+A / Ctrl+C 就能发出去
 ShowDiag = function()
-    exportTitle:SetText("|cffffd700诊断信息|r")
+    exportTitle:SetText("|cffd8b46a诊断信息|r")
     exportHint:SetText("全选复制这段发给作者即可。内容只有版本、接口状态和名单人数，不含账号信息。")
     exportBox:SetText(ns.DiagText and ns.DiagText() or "诊断接口不可用")
     exportFrame:Show()
@@ -518,8 +658,9 @@ logFrame:SetBackdropBorderColor(1, 1, 1, 0.18)
 logFrame:Hide()
 
 local logTitle = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-logTitle:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 12, -10)
-logTitle:SetText("记仇 日志")
+logTitle:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 14, -10)
+logTitle:SetText("|cffd8b46a记仇|r |cff8a8279日志|r")
+Hairline(logFrame, -32, 0.20)
 
 local logClose = CreateFrame("Button", nil, logFrame, "UIPanelCloseButton")
 logClose:SetPoint("TOPRIGHT", logFrame, "TOPRIGHT", -3, -3)
@@ -554,6 +695,7 @@ local btnLogClear = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate"
 btnLogClear:SetSize(76, 20)
 btnLogClear:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 12, 10)
 btnLogClear:SetText("清空")
+FlatButton(btnLogClear)
 btnLogClear:SetScript("OnClick", function()
     if ns.ClearLog then ns.ClearLog() end
     RefreshLog()
@@ -563,8 +705,9 @@ local btnLogCopy = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
 btnLogCopy:SetSize(76, 20)
 btnLogCopy:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 96, 10)
 btnLogCopy:SetText("导出")
+FlatButton(btnLogCopy)
 btnLogCopy:SetScript("OnClick", function()
-    exportTitle:SetText("记仇 日志")
+    exportTitle:SetText("|cffd8b46a记仇|r |cff8a8279日志|r")
     exportHint:SetText("按 Ctrl+A 全选，Ctrl+C 复制")
     exportBox:SetText(ComposeLogText())
     exportFrame:Show()
@@ -765,7 +908,7 @@ end
 ns.PlayAlertSound = PlayAlertSound
 
 ns.ShowAlert = function(name, deaths, starred)
-    local tag = starred and "|cffffd700★ 重点目标   |r" or ""
+    local tag = starred and "|cffd8b46a★ 重点目标   |r" or ""
     alertText:SetText(format("%s|cffff5555仇人接近|r   %s|cffeeeeee（杀过你 %d 次）|r",
         tag, name, deaths))
     alertT = 0
@@ -823,7 +966,7 @@ local function RefreshEnemyBar()
     local parts = {}
     for i = 1, math.min(#list, 4) do
         local v = list[i]
-        parts[#parts + 1] = (v.star and "|cffffd700★|r" or "")
+        parts[#parts + 1] = (v.star and "|cffd8b46a★|r" or "")
             .. "|cffff9999" .. v.name .. "|r|cff9a9a9a " .. tostring(v.deaths or 0) .. "|r"
     end
     if #list > 4 then parts[#parts + 1] = "|cff9a9a9a另 " .. tostring(#list - 4) .. " 人|r" end
@@ -1050,8 +1193,9 @@ setFrame:SetBackdrop({
 setFrame:Hide()
 
 local setTitle = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-setTitle:SetPoint("TOP", setFrame, "TOP", 0, -13)
-setTitle:SetText("|cffffd700记仇|r  设置")
+setTitle:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -14)
+setTitle:SetText("|cffd8b46a记仇|r |cff8a8279设置|r")
+Hairline(setFrame, -40, 0.20)
 
 local setClose = CreateFrame("Button", nil, setFrame, "UIPanelCloseButton")
 setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -3, -3)
@@ -1063,30 +1207,30 @@ local function SyncSettings()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     if btnNearby then
-        btnNearby:SetText("附近仇人提醒：" .. (s.nameplate and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnNearby:SetText("附近仇人提醒：" .. (s.nameplate and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
     if btnSound then
-        btnSound:SetText("接近时提示音：" .. ((s.nearbySound ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnSound:SetText("接近时提示音：" .. ((s.nearbySound ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
     if btnScreen then
-        btnScreen:SetText("接近时屏幕提示：" .. ((s.nearbyScreen ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnScreen:SetText("接近时屏幕提示：" .. ((s.nearbyScreen ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
     if btnEnemy then
-        btnEnemy:SetText("顶部敌情条：" .. ((s.enemyBar ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnEnemy:SetText("顶部敌情条：" .. ((s.enemyBar ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
     if btnDebug then
-        btnDebug:SetText("调试输出：" .. (s.debug and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnDebug:SetText("调试输出：" .. (s.debug and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
     if btnMinimap then
-        btnMinimap:SetText("小地图按钮：" .. (MinimapButtonShown() and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnMinimap:SetText("小地图按钮：" .. (MinimapButtonShown() and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
     if btnTooltip then
-        btnTooltip:SetText("悬停显示交手记录：" .. ((s.tooltip ~= false) and "|cff40ff40开|r" or "|cff888888关|r"))
+        btnTooltip:SetText("悬停显示交手记录：" .. ((s.tooltip ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
     end
 
     if setStat and ns.GetStats then
         local k, d, n = ns.GetStats()
-        setStat:SetText(format("|cff888888%s · 总击杀 %d  ·  总死亡 %d  ·  名单 %d 人|r", tostring(UnitName("player")), k, d, n))
+        setStat:SetText(format("|cff8a8279%s · 名单 %d 人 · 累计 %d 杀 %d 死|r", tostring(UnitName("player")), n, k, d))
     end
 end
 
@@ -1096,6 +1240,7 @@ local function MakeBtn(x, y, w, text, onClick)
     b:SetPoint("TOPLEFT", setFrame, "TOPLEFT", x, y)
     b:SetText(text)
     b:SetScript("OnClick", onClick)
+    FlatButton(b)
     return b
 end
 
@@ -1382,7 +1527,7 @@ local function TooltipAddLine(tip)
     if e.lastSeen then line = line .. "  ·  上次 " .. ns.TimeAgo(e.lastSeen) end
     if e.lastZone and e.lastZone ~= "" then line = line .. "  " .. e.lastZone end
 
-    local prefix = e.star and "|cffffd700★ |r" or ""
+    local prefix = e.star and "|cffd8b46a★ |r" or ""
     tip:AddLine(prefix .. "|cffeee0a0" .. line .. "|r", 1, 1, 1, true)
 
     if e.note and e.note ~= "" then
