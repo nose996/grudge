@@ -11,7 +11,7 @@ local kind       = "death"   -- death = 杀过我的；kill = 我杀过的
 local selected   = nil
 local filterText = ""
 
-local RefreshList, UpdateDetail, SelectEntry, SetKind, ShowExport
+local RefreshList, UpdateDetail, SelectEntry, SetKind, ShowExport, ShowDiag
 local emptyText, statFS, periodFS
 
 --------------------------------------------------------------
@@ -444,6 +444,15 @@ ShowExport = function()
     exportTitle:SetText("|cffffd700导出名单|r")
     exportHint:SetText("点进输入框按 Ctrl+A 全选、Ctrl+C 复制，可直接贴到群里或攻略站。")
     exportBox:SetText(ns.BuildExport(kind))
+    exportFrame:Show()
+    exportBox:SetFocus()
+    exportBox:HighlightText()
+end
+-- 复制诊断信息：把一小段环境摘要塞进同一个导出窗，Ctrl+A / Ctrl+C 就能发出去
+ShowDiag = function()
+    exportTitle:SetText("|cffffd700诊断信息|r")
+    exportHint:SetText("全选复制这段发给作者即可。内容只有版本、接口状态和名单人数，不含账号信息。")
+    exportBox:SetText(ns.DiagText and ns.DiagText() or "诊断接口不可用")
     exportFrame:Show()
     exportBox:SetFocus()
     exportBox:HighlightText()
@@ -1022,7 +1031,7 @@ mmWatch:SetScript("OnEvent", function() UpdateMinimapPos() end)
 -- 设置面板：把常用命令做成按钮
 --------------------------------------------------------------
 local setFrame = CreateFrame("Frame", "KillListSettingsFrame", UIParent, "BackdropTemplate")
-setFrame:SetSize(300, 470)
+setFrame:SetSize(300, 496)
 setFrame:SetPoint("CENTER", UIParent, "CENTER", 250, 30)
 setFrame:SetFrameStrata("DIALOG")
 setFrame:SetToplevel(true)
@@ -1185,11 +1194,15 @@ btnWipe = MakeBtn(154, -316, 130, "清空全部名单", function()
     end
 end)
 
+MakeBtn(16, -346, 268, "复制诊断信息", function()
+    if ShowDiag then ShowDiag() end
+end)
+
 setStat = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -348)
+setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -376)
 
 local setHint = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -370)
+setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -398)
 setHint:SetWidth(266)
 setHint:SetJustifyH("LEFT")
 setHint:SetText("小地图边上那个「仇」字按钮就是入口：左键开名单，右键开设置，按住左键拖动能挪位置。\n姓名板建议一直开着，关掉后只能靠选中目标认人。\n提示音如果没声音，点一下「试播提示音」看聊天框里的诊断。")
@@ -1296,6 +1309,9 @@ SlashCmdList["KILLLIST"] = function(msg)
             if setFrame:IsShown() then SyncSettings() end
         end
 
+    elseif msg == "diag" then
+        if ShowDiag then ShowDiag() end
+
     elseif msg == "demo" then
         local s = KillListDB and KillListDB.settings
         if s and s.enemyBar == false then
@@ -1319,7 +1335,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then

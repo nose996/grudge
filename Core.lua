@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.11"
+ns.version = "2.1.12"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1148,6 +1148,50 @@ function ns.PrintEnv()
     end
     print("|cff8ab4ff[记仇]|r PVP 计数接口：" ..
         (#found > 0 and table.concat(found, " · ") or "一个都不存在"))
+end
+
+--------------------------------------------------------------
+-- 诊断摘要：一小段可以直接贴给作者看的文本
+-- 报问题时让玩家点「复制诊断信息」，比教他敲 /kl env 友好
+--------------------------------------------------------------
+local function YN(v)
+    if v == true then return "可用" end
+    if v == nil then return "未测" end
+    if v == false then return "禁用" end
+    return "报错"
+end
+
+function ns.DiagText()
+    local ver, build, _, toc = GetBuildInfo()
+    local lines = {}
+
+    lines[#lines + 1] = format("记仇 %s 诊断 · 客户端 %s build %s · interface %s",
+        tostring(ns.version), tostring(ver), tostring(build), tostring(toc))
+
+    local me = UnitName("player") or "?"
+    local _, class = UnitClass("player")
+    local okLv, lv = pcall(UnitLevel, "player")
+    lines[#lines + 1] = format("角色：%s · %s · %s级", me, tostring(class or "?"),
+        tostring(okLv and lv or "?"))
+
+    lines[#lines + 1] = "接口：PARTY_KILL " .. YN(ns.partyKillOK)
+        .. " · 死亡回顾 " .. ((C_DeathRecap and C_DeathRecap.GetRecapEvents) and "可用" or "不存在")
+        .. " · 荣誉模板 " .. (GetHonorPattern() and "已解析" or "缺失")
+        .. " · 姓名板移除 " .. YN(ns.plateGoneOK)
+        .. " · PVP击杀数 " .. YN(ns.pvpKillsOK)
+        .. " · 命中消息 " .. YN(ns.selfHitsOK)
+
+    local s = (KillListDB and KillListDB.settings) or {}
+    lines[#lines + 1] = format("设置：姓名板 %s · 提示音 %s · 屏幕提示 %s · 敌情条 %s · 调试 %s",
+        (s.nameplate and "开" or "关"), tostring(s.alertSound or 1),
+        (s.nearbyScreen ~= false and "开" or "关"),
+        (s.enemyBar ~= false and "开" or "关"),
+        (s.debug and "开" or "关"))
+
+    local k, d, n = ns.GetStats()
+    lines[#lines + 1] = format("数据：名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d)
+
+    return table.concat(lines, "\n")
 end
 
 --------------------------------------------------------------
