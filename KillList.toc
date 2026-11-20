@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: KillList 仇人名单
+## Notes: 自动记录杀过你的人和你杀过的人，形成可标记、可导出的名单。
+## Author: Doubao
+## Version: 2.1.0
+## SavedVariables: KillListDB
+## X-Category: PvP
+
+Core.lua
+UI.lua

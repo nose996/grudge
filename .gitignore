@@ -1,0 +1,7 @@
+# 打包产物与系统垃圾不进仓库
+*.zip
+*.bak
+Thumbs.db
+desktop.ini
+.DS_Store
+node_modules/
