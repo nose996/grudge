@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.4"
+ns.version = "2.1.5"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1062,6 +1062,14 @@ function ns.PrintEnv()
         .. " · PlaySoundFile=" .. tostring(PlaySoundFile ~= nil)
         .. " · 当前音源 " .. tostring((s and s.alertSound) or 1)
         .. "（/kl snd 挨个试）")
+    local cvOK, cvAll = pcall(GetCVar, "Sound_EnableAllSound")
+    local cvSFX = select(2, pcall(GetCVar, "Sound_EnableSFX"))
+    local cvMV  = select(2, pcall(GetCVar, "Sound_MasterVolume"))
+    local cvSV  = select(2, pcall(GetCVar, "Sound_SFXVolume"))
+    print("|cff8ab4ff[记仇]|r 声音开关：总音=" .. tostring(cvOK and cvAll)
+        .. " · 音效=" .. tostring(cvSFX)
+        .. " · 主音量=" .. tostring(cvMV)
+        .. " · 音效音量=" .. tostring(cvSV))
 
     local k, d, n = ns.GetStats()
     print(format("|cff8ab4ff[记仇]|r 名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d))
