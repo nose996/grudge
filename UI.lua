@@ -688,15 +688,16 @@ end
 -- 插件自带的提示音：不依赖客户端素材文件是否被裁，路径必然存在
 local SELF_WAV = "Interface\\AddOns\\" .. tostring(ADDON) .. "\\alert.wav"
 
+-- 实测（2026-11-20）：本服插件能出声的只有两条路——
+--   ① PlaySound(编号) 走客户端内部音效库（856/852/799 已验证有声音）
+--   ② PlaySoundFile 读 AddOns 目录下插件自带的 wav
+-- 而 Sound\... 系统素材路径一律被拒（调用不报错但静默），别再往里塞候选了。
 local SOUNDS = {
     { name = "自动（自带 wav 优先）",    kind = "auto" },
     { name = "自带 beep.wav",           kind = "file", arg = SELF_WAV },
     { name = "复选框 叮 856",           kind = "kit",  arg = 856,  kit = "IG_MAINMENU_OPTION_CHECKBOX_ON" },
     { name = "主菜单 852",              kind = "kit",  arg = 852,  kit = "IG_MAINMENU_OPTION" },
     { name = "退出 799",                kind = "kit",  arg = 799,  kit = "GS_TITLE_OPTION_EXIT" },
-    { name = "猫叫哨（系统 ogg）",       kind = "file", arg = "Sound\\Character\\EmoteCatCallWhistle02.ogg" },
-    { name = "闹钟警告 wav",             kind = "file", arg = "Sound\\Interface\\AlarmClockWarning3.wav" },
-    { name = "复选框 wav",               kind = "file", arg = "Sound\\Interface\\igMainMenuOptionCheckBoxOn.wav" },
 }
 ns.SOUNDS = SOUNDS
 
@@ -726,16 +727,15 @@ local function FireSound(idx, channel)
     end
 
     if p.kind == "auto" then
-        -- 1) 插件自带 wav：文件一定在，唯一能自己控制的变量
+        -- 1) 插件自带 wav：文件一定在，音色自己控
         local ok, info = PFile(SELF_WAV)
         if ok then return "自动 → 自带 beep.wav" end
-        -- 2) 系统 ogg（163UI 在用）
-        ok, info = PFile("Sound\\Character\\EmoteCatCallWhistle02.ogg")
-        if ok then return "自动 → 猫叫哨 ogg" end
-        -- 3) 编号音效
+        -- 2) 编号音效（系统素材路径在本服全被拒，只有编号这条路通）
         ok, info = PKit(KitId("IG_MAINMENU_OPTION_CHECKBOX_ON", 856))
         if ok then return "自动 → 编号 856" end
-        return "自动 → 三条路都没发出去（" .. tostring(info) .. "）"
+        ok, info = PKit(852)
+        if ok then return "自动 → 编号 852" end
+        return "自动 → 两条路都没发出去（" .. tostring(info) .. "）"
 
     elseif p.kind == "kit" then
         local id = p.arg
