@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.8"
+ns.version = "2.1.9"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -41,7 +41,7 @@ local DEFAULTS = {
     nearbyWarn    = 120,
     nameplate     = true,    -- 姓名板缓存（提供等级/职业 + 仇人接近提醒）
     nearbySound   = true,    -- 仇人接近时播放提示音
-    alertSound    = 1,       -- 提示音音源编号（见 UI 里的 SOUNDS 表，1=自动多路）
+    alertSound    = 1,       -- 提示音音源编号（见 UI 里的 SOUNDS 表，1=自动/亡灵号角优先）
     nearbyScreen  = true,    -- 仇人接近时屏幕中央弹一行字
     tooltip       = true,    -- 鼠标悬停玩家时显示交手记录
     debug         = false,

@@ -676,14 +676,11 @@ alertFrame:SetScript("OnUpdate", function(self, dt)
     SetEdgeAlpha(va)
 end)
 
--- 提示音。教训：以前所有调用都带了第二个参数 "Master"，
--- 而本服客户端（和 163UI / AceGUI 一致）只认单参数调用，
--- 多塞一个通道名就静默吞掉——所以这里一律单参数，通道只在 /kl snd 显式测试时才传。
-local function KitId(key, fallback)
-    local t = _G.SOUNDKIT
-    if type(t) == "table" and t[key] then return t[key] end
-    return fallback
-end
+-- 提示音。走过的弯路记在这里，免得以后又试一遍：
+--   · 带第二个参数 "Master" 不是问题（SilverDragon 就这么写，有声音）
+--   · 单参数也不是问题（163UI_CombatTimer 就这么写，有声音）
+--   · 真正被拒的是 "Sound\\..." 系统素材字符串路径：调用不报错、静默丢弃
+-- 可用的三条：PlaySound(编号) / PlaySoundFile(数字 FileDataID) / PlaySoundFile(AddOns 下的 wav)
 
 -- 插件自带的提示音：不依赖客户端素材文件是否被裁，路径必然存在
 local SELF_WAV = "Interface\\AddOns\\" .. tostring(ADDON) .. "\\alert.wav"
@@ -694,15 +691,12 @@ local SELF_WAV = "Interface\\AddOns\\" .. tostring(ADDON) .. "\\alert.wav"
 --   ③ PlaySoundFile("Interface\\AddOns\\<插件>\\x.wav") 插件自带文件
 -- 而 "Sound\\..." 这类系统素材**字符串路径**一律被拒（调用不报错但静默）。
 local SOUNDS = {
-    { name = "自动（自带 wav 优先）",    kind = "auto" },
-    { name = "自带 beep.wav",           kind = "file", arg = SELF_WAV },
-    { name = "复选框 叮 856",           kind = "kit",  arg = 856,  kit = "IG_MAINMENU_OPTION_CHECKBOX_ON" },
-    { name = "主菜单 852",              kind = "kit",  arg = 852,  kit = "IG_MAINMENU_OPTION" },
-    { name = "退出 799",                kind = "kit",  arg = 799,  kit = "GS_TITLE_OPTION_EXIT" },
-    { name = "战鼓（NPCScan 同款）",     kind = "fdid", arg = 567275 },
-    { name = "亡灵号角（NPCScan 旧版）",  kind = "fdid", arg = 567386 },
-    { name = "雷劈",                    kind = "fdid", arg = 566202 },
-    { name = "巫妖王「我看见你」",        kind = "fdid", arg = 554236 },
+    { name = "自动（亡灵号角优先）",      kind = "auto" },
+    { name = "亡灵号角 567386",          kind = "fdid", arg = 567386 },
+    { name = "战鼓 567275",              kind = "fdid", arg = 567275 },
+    { name = "雷劈 566202",              kind = "fdid", arg = 566202 },
+    { name = "巫妖王「我看见你」554236",  kind = "fdid", arg = 554236 },
+    { name = "自带 beep.wav（兜底）",     kind = "file", arg = SELF_WAV },
 }
 ns.SOUNDS = SOUNDS
 
@@ -712,12 +706,12 @@ local function FireSound(idx, channel)
     if not p then return "序号无效" end
     local chan = (channel and channel ~= "") and channel or nil
 
-    local function PKit(id)
-        if not PlaySound then return false, "PlaySound 不存在" end
-        local ok, res
-        if chan then ok, res = pcall(PlaySound, id, chan)
-        else ok, res = pcall(PlaySound, id) end
-        if not ok then return false, "报错：" .. tostring(res) end
+    -- 数字 FileDataID：客户端文件表，SilverDragon 播稀有提示音走的就是这条
+    local function PFDID(id)
+        if not PlaySoundFile then return false, "PlaySoundFile 不存在" end
+        local ok = pcall(PlaySoundFile, id)
+        if not ok then ok = pcall(PlaySoundFile, id, chan or "Master") end
+        if not ok then return false, "报错" end
         return true, tostring(id)
     end
 
@@ -732,32 +726,17 @@ local function FireSound(idx, channel)
     end
 
     if p.kind == "auto" then
-        -- 1) 插件自带 wav：文件一定在，音色自己控
-        local ok, info = PFile(SELF_WAV)
+        local ok, info = PFDID(567386)          -- 亡灵号角
+        if ok then return "自动 → 亡灵号角 567386" end
+        ok, info = PFile(SELF_WAV)              -- 自带 wav 兜底
         if ok then return "自动 → 自带 beep.wav" end
-        -- 2) 编号音效（系统素材路径在本服全被拒，只有编号这条路通）
-        ok, info = PKit(KitId("IG_MAINMENU_OPTION_CHECKBOX_ON", 856))
-        if ok then return "自动 → 编号 856" end
-        ok, info = PKit(852)
-        if ok then return "自动 → 编号 852" end
-        return "自动 → 两条路都没发出去（" .. tostring(info) .. "）"
-
-    elseif p.kind == "kit" then
-        local id = p.arg
-        local t = _G.SOUNDKIT
-        if type(t) == "table" and p.kit and t[p.kit] then id = t[p.kit] end
-        local ok, info = PKit(id)
-        if not ok then return p.name .. " → " .. info end
-        return p.name .. " → 已发送（编号 " .. tostring(id) .. "）"
+        ok, info = PFDID(567275)                -- 战鼓
+        if ok then return "自动 → 战鼓 567275" end
+        return "自动 → 都没发出去（" .. tostring(info) .. "）"
 
     elseif p.kind == "fdid" then
-        -- 数字 FileDataID：SilverDragon 播稀有提示音就是这条路，还带着 Master 通道
-        if not PlaySoundFile then return p.name .. " → PlaySoundFile 不存在" end
-        local ok = pcall(PlaySoundFile, p.arg)
-        if not ok then
-            local ok2 = pcall(PlaySoundFile, p.arg, "Master")
-            if not ok2 then return p.name .. " → 报错" end
-        end
+        local ok, info = PFDID(p.arg)
+        if not ok then return p.name .. " → " .. info end
         return p.name .. " → 已发送（ID " .. tostring(p.arg) .. "）"
     end
 
@@ -769,7 +748,8 @@ ns.FireSound = FireSound
 
 local function PlayAlertSound(forceIdx, channel)
     local s = KillListDB and KillListDB.settings
-    local idx = forceIdx or (s and s.alertSound) or 1
+    local idx = tonumber(forceIdx or (s and s.alertSound)) or 1
+    if not SOUNDS[idx] then idx = 1 end
     return FireSound(idx, channel)
 end
 
