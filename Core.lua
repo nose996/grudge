@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.23"
+ns.version = "2.1.24"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -472,76 +472,16 @@ ns.plateGone     = {}  -- guid -> {name, t}，姓名板消失的时刻，用来�
 ns.plateUnitGUID = {}  -- unit -> guid，REMOVED 触发时 unit 已经失效，只能提前存
 ns.plateUnitName = {}  -- unit -> 名字，同上，缓存里查不到时用它兜底
 
-local function RecordFromLastHit(tag)
-    local h = ns.lastHit
 
-    -- 优先：此刻还选着的目标如果是玩家、已经死了，而且他的血条刚从我视野里消失，
-    -- 那才算刚放倒的人。只按「选中了一个死掉的玩家」判会被尸体骗 ——
-    -- 旁边躺着的人只要被选中，任何一次 PARTY_KILL 都会把他算成我的击杀（2.1.10 实机踩过）
-    local deadName, deadGUID
-    for _, u in ipairs({ "target", "mouseover", "focus" }) do
-        if UnitExists(u) and UnitIsPlayer(u) and UnitIsDead(u)
-            and not (UnitIsFriend and UnitIsFriend("player", u)) then
-            local g = UnitGUID(u)
-            local v = g and ns.plateGone and ns.plateGone[g]
-            if v and (time() - v.t) <= 15 then
-                deadName = BestName(u)
-                deadGUID = g
-                break
-            end
-        end
-    end
-    if deadName then
-        local me = UnitName("player")
-        if not me or deadName ~= me then
-            h = { name = deadName, guid = deadGUID, t = time() }
-        end
-    end
+-- 2.1.24 删掉了 RecordFromLastHit（2.1.10 到 2.1.23 一直挂着的「猜」兜底）。
+-- 它靠「最近命中过谁」加「谁的姓名板刚从视野里消失」来推断击杀，是唯一还在造成
+-- 误记的路：3v5 混战时敌方五个人来回跑动、倒下、隐身，姓名板一消失就被记成
+-- 「我杀的」。实测一场里 Leung Bao 被记 3 次，而同一时刻日志还在报
+-- 「附近出现 Leung Bao」和「你已死亡」。这服没有任何「是我打死的」强信号
+-- （CLEU 被封、SELF_HITS 注册失败、「你 杀死了 X」收不到），所以这条路做不准。
+-- 现在只认「PARTY_KILL 第一段是我」的通报；宠物补尾刀会漏记，认了。
+-- ns.lastHit 仍然保留（HandleHit 会写），只用于日志排查展示，不再写名单。
 
-    -- 其次：姓名板刚消失的玩家，多半就是刚被放倒的那个。
-    -- 这里只认 GUID 形状（Player- 开头），不拿名字段数当判据 ——
-    -- 名字会被截半（例如只拿到「燃烧的精灵」，全名其实是两段），
-    -- 半名没有空格，靠空格判断会把它当 NPC 丢掉，所以只能认 GUID
-    if not h then
-        local gone = ns.plateGone or {}
-        local best, bestT
-        for _, v in pairs(gone) do
-            local age = time() - v.t
-            if age >= 0 and age <= 15 and type(v.name) == "string"
-                and type(v.guid) == "string" and v.guid:find("^Player%-") then
-                if not bestT or v.t > bestT then best, bestT = v, v.t end
-            end
-        end
-        if best then h = best end
-    end
-
-    if not h then
-        -- 触发到了却找不到人：把现场写进日志，下次漏记能直接定位卡在哪一步
-        local nGone, nCache = 0, 0
-        for _ in pairs(ns.plateGone or {}) do nGone = nGone + 1 end
-        for _ in pairs(cacheByGUID) do nCache = nCache + 1 end
-        ns.Debug(format("%s 没找到可记的人：目标=%s（玩家=%s 死亡=%s）· 姓名板消失 %d 条 · 资料缓存 %d 人",
-            tostring(tag), tostring(BestName("target")), tostring(UnitIsPlayer("target")),
-            tostring(UnitIsDead("target")), nGone, nCache))
-        return false
-    end
-    if (time() - h.t) > 30 then return false end
-    local me = UnitName("player")
-    if me and h.name == me then return false end
-
-    local e = Record(h.name, "kill", h.guid, nil, tag or "hit")
-    if e then
-        ns.Log("击杀（战斗日志命中）：" .. e.name, "kill")
-        ns.lastHit = nil
-        return true
-    end
-    -- 被 8 秒去重挡下的，说明这刀已经由别的信号记过了，也算成功，别再往下补
-    if recentKill[h.name] and (time() - recentKill[h.name]) <= 8 then
-        ns.lastHit = nil
-        return true
-    end
-    return false
-end
 --------------------------------------------------------------
 -- 守尸提醒
 --------------------------------------------------------------
@@ -611,13 +551,13 @@ local function HandlePartyKill(...)
     end
 
     -- 参数里既没有别的 Player GUID、也没有任何名字：被杀的是怪或宠物。
-    -- 唯一还允许猜的情况是「我刚用技能命中过某个人」的记录还在（ns.lastHit，宝宝补最后一刀）。
-    -- 除此之外一律跳过——以前这里会拿「此刻选中的死玩家」兜底，结果旁边躺着的尸体
-    -- 被当成我的击杀（2.1.10 实机踩过：杀玛格拉姆掠夺者，躺尸的「真爱坤 小黑子」进了我杀过的名单）。
+    -- 2.1.24 起这里不再做任何推断——以前会拿「此刻选中的死玩家」或「最近命中过的人」兜底，
+    -- 混战里躺在旁边的尸体、只挨了几枪的敌人都会被算成我的击杀
+    -- （2.1.10 杀玛格拉姆掠夺者时把躺尸的「真爱坤 小黑子」记上了；2.1.23 之前又把 Leung Bao 记了 3 次）。
     if not victimGUID and not victimName then
-        local h = ns.lastHit
-        if h and (time() - h.t) <= 15 and RecordFromLastHit("party_kill") then return end
-        ns.Debug("PARTY_KILL 不是玩家击杀（没有受害者 Player GUID，也没有命中记录），跳过")
+        -- 2.1.24：这里原来会去「猜」最近命中过谁、谁的姓名板刚消失，混战必错。
+        -- 没有受害者 Player GUID 就当场跳过，不猜。
+        ns.Debug("PARTY_KILL 没有受害者 Player GUID（多半是宠物或怪），跳过不猜")
         return
     end
 
@@ -741,8 +681,7 @@ local function HandleHonorGain(msg)
     end
 
     if not name then
-        ns.Debug("荣誉消息不带名字：" .. m)
-        RecordFromLastHit("honor")
+        ns.Debug("荣誉消息不带名字（不再靠最近命中猜）：" .. m)
         return
     end
     name = name:gsub("^%s+", ""):gsub("%s+$", "")
