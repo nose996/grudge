@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.20"
+ns.version = "2.1.21"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -272,7 +272,7 @@ end
 
 -- 队伍成员 GUID 判定。PARTY_KILL 的参数里一旦出现自己队伍成员的 Player GUID，
 -- 说明这条通报是队友那一侧的（队友击杀，或者队友阵亡），
--- 绝不能当成「我杀了这个人」。2.1.20 实机踩过：整份名单被两个同队玩家刷满 31 条。
+-- 绝不能当成「我杀了这个人」。2.1.21 实机踩过：整份名单被两个同队玩家刷满 31 条。
 local function IsGroupGUID(guid)
     if type(guid) ~= "string" or guid == "" then return false end
     if UnitGUID("player") == guid then return true end
@@ -290,7 +290,9 @@ local function IsGroupGUID(guid)
     return false
 end
 
--- PARTY_KILL 原始参数留档，`/kl pk` 可以回看最近 8 次到底传了什么
+-- PARTY_KILL 原始参数留档，`/kl pk` 可以回看最近 8 次到底传了什么。
+-- 每条都记下「事件发生那一刻的队伍人数」：如果某人单练时也收到带别人 GUID 的通报，
+-- 就说明这条事件在这服是广播式的，得再加一道判定
 ns.pkRaw = {}
 function ns.NotePartyKill(raw, victimGUID, victimName, sawGroup)
     local t = ns.pkRaw
@@ -300,6 +302,8 @@ function ns.NotePartyKill(raw, victimGUID, victimName, sawGroup)
         raw    = table.concat(raw, " │ "),
         victim = victimGUID or victimName or "无",
         group  = sawGroup and true or false,
+        np     = (GetNumPartyMembers and GetNumPartyMembers()) or 0,
+        nr     = (GetNumRaidMembers and GetNumRaidMembers()) or 0,
     }
 end
 
@@ -308,10 +312,10 @@ function ns.DumpPartyKill()
     if #t == 0 then
         print("|cff8ab4ff[记仇]|r 还没有捕获到 PARTY_KILL，进游戏打个玩家再看")
     else
-        print(format("|cff8ab4ff[记仇]|r 最近 %d 次 PARTY_KILL（每条：时间 · 原始参数 → 判定出的受害者）", #t))
+        print(format("|cff8ab4ff[记仇]|r 最近 %d 次 PARTY_KILL（时间 · 当时的队伍人数 · 原始参数 → 判定出的受害者）", #t))
         for i, v in ipairs(t) do
-            print(format("  %s  %s  →  %s%s",
-                date("%H:%M:%S", v.t), v.raw, v.victim,
+            print(format("  %s  小队%d/团队%d  %s  →  %s%s",
+                date("%H:%M:%S", v.t), v.np or 0, v.nr or 0, v.raw, v.victim,
                 v.group and "（参数里有队友 GUID）" or ""))
         end
     end
@@ -616,10 +620,11 @@ local function HandlePartyKill(...)
 
     ns.NotePartyKill(raw, victimGUID, victimName, sawGroupGUID)
 
-    -- 参数里出现了队友的 GUID，又没有别人的 GUID：这条通报属于队友那一侧
-    -- （队友击杀别人，或者队友自己阵亡），无论是名字还是空参数都不该落到我头上
-    if sawGroupGUID and not victimGUID then
-        ns.Debug("PARTY_KILL 参数里是队友的 GUID，不是我的击杀，跳过：" .. table.concat(raw, " | "))
+    -- 参数里出现队友的 GUID，整条通报就属于队友那一侧（实测这服的形态是
+    -- 「击杀者 GUID + 受害者 GUID」两段，队友杀怪、队友杀人都走同一条格式），
+    -- 一律丢掉，不管后面还跟着谁的 GUID。否则队友杀的人会被记成我杀的。
+    if sawGroupGUID then
+        ns.Debug("PARTY_KILL 的击杀者是队友，不是我的击杀，整条跳过：" .. table.concat(raw, " | "))
         return
     end
 
@@ -1333,7 +1338,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_PVP_KILLS_CHANGED" then
         -- 这个计数器不可靠：队友的战果、以及灰名/宠物的判定都可能让它动；触发时 target 已被清空，
         -- 根本拿不到是谁。所以它只当「发生过一次 PVP 击杀」的痕迹，绝不拿它写名单。
-        -- 2.1.20 实机踩过：只打了几枪并没打死的人，被这条路径拿「最近命中」猜成了我的击杀。
+        -- 2.1.21 实机踩过：只打了几枪并没打死的人，被这条路径拿「最近命中」猜成了我的击杀。
         -- 真正写名单只认带名字或带 Player GUID 的信号：PARTY_KILL / 荣誉消息 / 「你 杀死了 XXX」。
         local guess = ns.lastHit and ns.lastHit.name
         ns.Log(format("收到 PVP 击杀数变化事件（目标=%s）· 最近命中=%s · 未确认是谁，不写名单（可用 /kl add 名字 补记）",
