@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.17"
+ns.version = "2.1.18"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1250,18 +1250,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(CacheCurrentUnits)
 
     elseif event == "PLAYER_PVP_KILLS_CHANGED" then
-        -- PVP 击杀数变化就说明放倒了一个玩家，用最近命中的目标补名字
-        -- 先无条件留一条痕迹：触发器到底响没响，看日志窗就知道，不依赖任何接口
-        -- 实测这事件会触发两次、且触发时 target 已被清空，主要靠 PARTY_KILL 先记，
-        -- 所以这里没记上多半是「这刀已经记过了」，只记 info 不吵
-        ns.Log(format("收到 PVP 击杀数变化事件（目标=%s）", tostring(BestName("target"))), "info")
-        if not RecordFromLastHit("pvp_kills") then
-            local g = ns.plateGone or {}
-            local n = 0
-            for _ in pairs(g) do n = n + 1 end
-            ns.Log(format("PVP 事件没记新记录（多半这刀已记过）：目标=%s，姓名板消失 %d 条",
-                tostring(BestName("target")), n), "info")
-        end
+        -- 这个计数器不可靠：队友的战果、以及灰名/宠物的判定都可能让它动；触发时 target 已被清空，
+        -- 根本拿不到是谁。所以它只当「发生过一次 PVP 击杀」的痕迹，绝不拿它写名单。
+        -- 2.1.18 实机踩过：只打了几枪并没打死的人，被这条路径拿「最近命中」猜成了我的击杀。
+        -- 真正写名单只认带名字或带 Player GUID 的信号：PARTY_KILL / 荣誉消息 / 「你 杀死了 XXX」。
+        local guess = ns.lastHit and ns.lastHit.name
+        ns.Log(format("收到 PVP 击杀数变化事件（目标=%s）· 最近命中=%s · 未确认是谁，不写名单（可用 /kl add 名字 补记）",
+            tostring(BestName("target")), tostring(guess or "无")), "info")
 
     elseif event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
         local msg = ...
