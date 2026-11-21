@@ -5,7 +5,7 @@
 
 local ADDON, ns = ...
 
-local ROW_H = 24
+local ROW_H = 26
 
 --------------------------------------------------------------
 -- 统一视觉：一套配色 + 一个扁平按钮皮肤
@@ -16,61 +16,125 @@ local GOLD = { 0.847, 0.706, 0.416 }
 local TXT  = { 0.93, 0.90, 0.83 }
 local DIM  = { 0.60, 0.58, 0.54 }
 
-local function FlatButton(b)
-    if not b or b.__flat then return b end
-    b.__flat = true
-
-    for _, m in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetDisabledTexture", "GetHighlightTexture" }) do
-        local fn = b[m]
-        if fn then
-            local t = fn(b)
-            if t then t:SetAlpha(0) end
-        end
+--------------------------------------------------------------
+-- 自绘控件：本服没有可用的圆角/贴图，按钮、开关、关闭键全靠色块 + 1px 边
+--------------------------------------------------------------
+-- 四条 1px 边，返回一个改透明度的函数
+local function EdgeBox(f)
+    local e = {}
+    for i = 1, 4 do e[i] = f:CreateTexture(nil, "BORDER") end
+    e[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    e[1]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    e[1]:SetHeight(1)
+    e[2]:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    e[2]:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    e[2]:SetHeight(1)
+    e[3]:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    e[3]:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    e[3]:SetWidth(1)
+    e[4]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    e[4]:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    e[4]:SetWidth(1)
+    return function(a)
+        for i = 1, 4 do e[i]:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], a) end
     end
+end
+
+-- 自绘扁平按钮：UIPanelButtonTemplate 的九宫格木纹在这个客户端上盖不掉，
+-- 只能自己用色块 + 1px 边画一个；danger 走暗红字，fontObj 可换字号
+local function Flat(parent, w, h, text, onClick, danger, fontObj)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(w, h)
 
     local bg = b:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(b)
+    local edge = EdgeBox(b)
+    local fs = b:CreateFontString(nil, "OVERLAY", fontObj or "GameFontNormalSmall")
+    fs:SetAllPoints(b)
+    fs:SetJustifyH("CENTER")
+    fs:SetText(text or "")
 
-    local edges = {}
-    for i = 1, 4 do
-        local e = b:CreateTexture(nil, "BORDER")
-        e:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.28)
-        edges[i] = e
-    end
-    edges[1]:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
-    edges[1]:SetPoint("TOPRIGHT", b, "TOPRIGHT", 0, 0)
-    edges[1]:SetHeight(1)
-    edges[2]:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-    edges[2]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
-    edges[2]:SetHeight(1)
-    edges[3]:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
-    edges[3]:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-    edges[3]:SetWidth(1)
-    edges[4]:SetPoint("TOPRIGHT", b, "TOPRIGHT", 0, 0)
-    edges[4]:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
-    edges[4]:SetWidth(1)
+    local isOn = false
+    local idleC = { 0.91, 0.87, 0.79 }
 
-    local function paint(r, g, bl, a, edgeA)
-        bg:SetColorTexture(r, g, bl, a)
-        for i = 1, 4 do edges[i]:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], edgeA) end
+    local function paintNormal()
+        if isOn then
+            bg:SetColorTexture(0.260, 0.200, 0.100, 0.95)
+            edge(0.80)
+            fs:SetTextColor(1, 0.87, 0.60)
+        elseif danger then
+            bg:SetColorTexture(0.105, 0.078, 0.062, 0.95)
+            edge(0.30)
+            fs:SetTextColor(0.80, 0.45, 0.38)
+        else
+            bg:SetColorTexture(0.095, 0.080, 0.064, 0.95)
+            edge(0.22)
+            fs:SetTextColor(idleC[1], idleC[2], idleC[3])
+        end
     end
-    local function paintNormal() paint(0.075, 0.065, 0.055, 0.90, 0.26) end
-    local function paintSel()    paint(0.260, 0.200, 0.100, 0.95, 0.80) end
+
+    local function paintHover()
+        if danger then
+            bg:SetColorTexture(0.150, 0.100, 0.080, 0.95)
+            edge(0.62)
+            fs:SetTextColor(0.95, 0.56, 0.47)
+        else
+            bg:SetColorTexture(0.165, 0.138, 0.104, 0.95)
+            edge(0.58)
+            fs:SetTextColor(1, 0.93, 0.76)
+        end
+    end
+
     paintNormal()
+    b:SetScript("OnEnter", paintHover)
+    b:SetScript("OnLeave", paintNormal)
+    b:SetScript("OnMouseDown", function() bg:SetColorTexture(0.040, 0.034, 0.028, 1) end)
+    b:SetScript("OnMouseUp", function()
+        if b.GetMouseOver and b:GetMouseOver() then paintHover() else paintNormal() end
+    end)
+    b:SetScript("OnClick", function() if onClick then onClick() end end)
 
     -- 页签这类需要「选中」状态的按钮用得到
-    b.__setActive = function(on)
-        b.__on = on and true or false
-        if b.__on then paintSel() else paintNormal() end
+    b.__setActive = function(v)
+        isOn = v and true or false
+        paintNormal()
     end
+    b.__setIdleColor = function(r, g, bl)
+        idleC = { r, g, bl }
+        paintNormal()
+    end
+    b.SetText = function(_, t) fs:SetText(t) end
+    b.GetFontString = function() return fs end
+    return b
+end
 
-    b:HookScript("OnEnter",     function() paint(0.150, 0.125, 0.095, 0.95, 0.62) end)
-    b:HookScript("OnLeave",     function() if b.__on then paintSel() else paintNormal() end end)
-    b:HookScript("OnMouseDown", function() paint(0.035, 0.030, 0.026, 0.95, 0.85) end)
-    b:HookScript("OnMouseUp",   function()
-        if b.__on then paintSel() else paint(0.150, 0.125, 0.095, 0.95, 0.62) end
+-- 自绘关闭按钮：原生 UIPanelCloseButton 是红木纹，和整套暗色不搭
+local function SkinClose(parent, onClick, x, y)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(20, 20)
+    b:SetPoint("TOPRIGHT", parent, "TOPRIGHT", x or -7, y or -7)
+
+    local bg = b:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(b)
+    bg:SetColorTexture(0.07, 0.06, 0.05, 0.75)
+    local edge = EdgeBox(b)
+    edge(0.22)
+
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetAllPoints(b)
+    fs:SetJustifyH("CENTER")
+    fs:SetText("×")
+    fs:SetTextColor(0.62, 0.60, 0.56)
+
+    b:SetScript("OnClick", function() if onClick then onClick() end end)
+    b:SetScript("OnEnter", function()
+        edge(0.70)
+        fs:SetTextColor(0.95, 0.85, 0.62)
     end)
-
+    b:SetScript("OnLeave", function()
+        edge(0.22)
+        fs:SetTextColor(0.62, 0.60, 0.56)
+    end)
     return b
 end
 
@@ -130,17 +194,21 @@ frame:SetBackdrop({
 })
 frame:Hide()
 
+-- 面板暖色底：原生 DialogFrame 背景偏冷黑，盖一层很淡的暖棕，整体偏暖
+local frameTint = frame:CreateTexture(nil, "BACKGROUND")
+frameTint:SetPoint("TOPLEFT", frame, "TOPLEFT", 7, -7)
+frameTint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -7, 7)
+frameTint:SetColorTexture(0.22, 0.15, 0.09, 0.42)
+
 local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-title:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, -14)
+title:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -14)
 title:SetText("|cffd8b46a记仇|r")
 
 local subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 subtitle:SetPoint("LEFT", title, "RIGHT", 8, -1)
 subtitle:SetText("|cff8a8279PVP 交手记录|r")
 
-local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
-closeBtn:SetScript("OnClick", function() frame:Hide() end)
+local closeBtn = SkinClose(frame, function() frame:Hide() end, -9, -9)
 
 local btnOpenLog = LinkButton(frame, 34, "日志", -40, function()
     if ns.ToggleLog then ns.ToggleLog() end
@@ -149,22 +217,16 @@ local btnOpenSet = LinkButton(frame, 34, "设置", -78, function()
     if ns.OpenSettings then ns.OpenSettings() end
 end)
 
-Hairline(frame, -36, 0.22)
+Hairline(frame, -38, 0.32)
 
 --------------------------------------------------------------
 -- 两个页签
 --------------------------------------------------------------
-local tabDeath = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-tabDeath:SetSize(150, 26)
+local tabDeath = Flat(frame, 150, 26, "", function() SetKind("death") end, false, "GameFontNormal")
 tabDeath:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -46)
-tabDeath:SetScript("OnClick", function() SetKind("death") end)
-FlatButton(tabDeath)
 
-local tabKill = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-tabKill:SetSize(150, 26)
+local tabKill = Flat(frame, 150, 26, "", function() SetKind("kill") end, false, "GameFontNormal")
 tabKill:SetPoint("LEFT", tabDeath, "RIGHT", 6, 0)
-tabKill:SetScript("OnClick", function() SetKind("kill") end)
-FlatButton(tabKill)
 
 --------------------------------------------------------------
 -- 搜索
@@ -196,7 +258,7 @@ searchHint:SetText("搜索名字…")
 --------------------------------------------------------------
 -- 列表区垫一层深色底板，让表头和数据从木纹背景里分出来
 local listBg = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-listBg:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -100)
+listBg:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -104)
 listBg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 200)
 listBg:SetBackdrop({
     bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -204,15 +266,15 @@ listBg:SetBackdrop({
     tile = true, tileSize = 16, edgeSize = 8,
     insets = { left = 2, right = 2, top = 2, bottom = 2 },
 })
-listBg:SetBackdropColor(0, 0, 0, 0.38)
-listBg:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.18)
+listBg:SetBackdropColor(0.035, 0.030, 0.025, 0.55)
+listBg:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.26)
 
 local function HeadText(text, x, w, align)
     local t = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -104)
+    t:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -108)
     t:SetWidth(w)
     t:SetJustifyH(align or "LEFT")
-    t:SetText("|cff7d766c" .. text .. "|r")
+    t:SetText("|cff8a8279" .. text .. "|r")
     return t
 end
 HeadText("名字", 26, 168)
@@ -220,7 +282,7 @@ HeadText("等级 / 公会", 198, 100)
 HeadText("交手", 306, 60)
 
 local scroll = CreateFrame("ScrollFrame", "KillListScrollFrame", frame, "UIPanelScrollFrameTemplate")
-scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -122)
+scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -126)
 scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -38, 206)
 
 local content = CreateFrame("Frame", nil, scroll)
@@ -369,8 +431,8 @@ detail:SetBackdrop({
     tile = true, tileSize = 16, edgeSize = 12,
     insets = { left = 3, right = 3, top = 3, bottom = 3 },
 })
-detail:SetBackdropColor(0, 0, 0, 0.45)
-detail:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.20)
+detail:SetBackdropColor(0.035, 0.030, 0.025, 0.58)
+detail:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.26)
 
 local dName = detail:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 dName:SetPoint("TOPLEFT", detail, "TOPLEFT", 6, -8)
@@ -399,22 +461,15 @@ local dNoteHint = detail:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"
 dNoteHint:SetPoint("LEFT", dNote, "RIGHT", 8, 0)
 dNoteHint:SetText("备注，回车保存")
 
-local function MakeDetailButton(text, x)
-    local b = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
-    b:SetSize(88, 22)
+local function MakeDetailButton(text, x, danger)
+    local b = Flat(detail, 88, 22, text, nil, danger)
     b:SetPoint("TOPLEFT", detail, "TOPLEFT", x, -88)
-    b:SetText(text)
-    FlatButton(b)
     return b
 end
 
 local btnStar   = MakeDetailButton("标星", 6)
 local btnIgnore = MakeDetailButton("忽略", 102)
-local btnDelete = MakeDetailButton("删除", 198)
-do
-    local fs = btnDelete:GetFontString()
-    if fs then fs:SetTextColor(0.86, 0.52, 0.46) end
-end
+local btnDelete = MakeDetailButton("删除", 198, true)
 
 btnStar:SetScript("OnClick", function()
     if not selected then return end
@@ -507,12 +562,8 @@ SetKind = function(k)
     UpdateDetail()
 
     local function tone(tab, on)
+        if tab.__setIdleColor then tab.__setIdleColor(0.72, 0.70, 0.66) end
         if tab.__setActive then tab.__setActive(on) end
-        local fs = tab.GetFontString and tab:GetFontString()
-        if fs then
-            if on then fs:SetTextColor(1, 0.87, 0.60)
-            else fs:SetTextColor(0.72, 0.70, 0.66) end
-        end
     end
     tone(tabDeath, k == "death")
     tone(tabKill,  k == "kill")
@@ -532,12 +583,8 @@ periodFS:SetText("")
 
 Hairline(frame, -538, 0.18)
 
-local btnExport = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-btnExport:SetSize(110, 24)
+local btnExport = Flat(frame, 110, 24, "导出名单", function() ShowExport() end)
 btnExport:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 16)
-btnExport:SetText("导出名单")
-btnExport:SetScript("OnClick", function() ShowExport() end)
-FlatButton(btnExport)
 
 --------------------------------------------------------------
 -- 导出窗口
@@ -558,9 +605,13 @@ local exportTitle = exportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal
 exportTitle:SetPoint("TOP", exportFrame, "TOP", 0, -13)
 exportTitle:SetText("|cffd8b46a导出名单|r")
 
-local exportClose = CreateFrame("Button", nil, exportFrame, "UIPanelCloseButton")
-exportClose:SetPoint("TOPRIGHT", exportFrame, "TOPRIGHT", -3, -3)
-exportClose:SetScript("OnClick", function() exportFrame:Hide() end)
+local exportClose = SkinClose(exportFrame, function() exportFrame:Hide() end, -7, -7)
+
+-- 导出窗也盖一层暖色底，和主窗、设置面板统一
+local exportTint = exportFrame:CreateTexture(nil, "BACKGROUND")
+exportTint:SetPoint("TOPLEFT", exportFrame, "TOPLEFT", 7, -7)
+exportTint:SetPoint("BOTTOMRIGHT", exportFrame, "BOTTOMRIGHT", -7, 7)
+exportTint:SetColorTexture(0.22, 0.15, 0.09, 0.42)
 
 local exportHint = exportFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 exportHint:SetPoint("TOPLEFT", exportFrame, "TOPLEFT", 16, -42)
@@ -653,8 +704,8 @@ logFrame:SetBackdrop({
     tile = true, tileSize = 16, edgeSize = 16,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 })
-logFrame:SetBackdropColor(0.05, 0.05, 0.06, 0.93)
-logFrame:SetBackdropBorderColor(1, 1, 1, 0.18)
+logFrame:SetBackdropColor(0.062, 0.053, 0.045, 0.95)
+logFrame:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 0.26)
 logFrame:Hide()
 
 local logTitle = logFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -662,9 +713,7 @@ logTitle:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 14, -10)
 logTitle:SetText("|cffd8b46a记仇|r |cff8a8279日志|r")
 Hairline(logFrame, -32, 0.20)
 
-local logClose = CreateFrame("Button", nil, logFrame, "UIPanelCloseButton")
-logClose:SetPoint("TOPRIGHT", logFrame, "TOPRIGHT", -3, -3)
-logClose:SetScript("OnClick", function() logFrame:Hide() end)
+local logClose = SkinClose(logFrame, function() logFrame:Hide() end, -6, -6)
 
 logScroll = CreateFrame("ScrollFrame", "KillListLogScroll", logFrame, "UIPanelScrollFrameTemplate")
 logScroll:SetPoint("TOPLEFT", logFrame, "TOPLEFT", 10, -32)
@@ -691,22 +740,13 @@ end)
 logCountFS = logFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 logCountFS:SetPoint("BOTTOMRIGHT", logFrame, "BOTTOMRIGHT", -16, 16)
 
-local btnLogClear = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
-btnLogClear:SetSize(76, 20)
-btnLogClear:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 12, 10)
-btnLogClear:SetText("清空")
-FlatButton(btnLogClear)
-btnLogClear:SetScript("OnClick", function()
+local btnLogClear = Flat(logFrame, 76, 20, "清空", function()
     if ns.ClearLog then ns.ClearLog() end
     RefreshLog()
 end)
+btnLogClear:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 12, 10)
 
-local btnLogCopy = CreateFrame("Button", nil, logFrame, "UIPanelButtonTemplate")
-btnLogCopy:SetSize(76, 20)
-btnLogCopy:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 96, 10)
-btnLogCopy:SetText("导出")
-FlatButton(btnLogCopy)
-btnLogCopy:SetScript("OnClick", function()
+local btnLogCopy = Flat(logFrame, 76, 20, "导出", function()
     exportTitle:SetText("|cffd8b46a记仇|r |cff8a8279日志|r")
     exportHint:SetText("按 Ctrl+A 全选，Ctrl+C 复制")
     exportBox:SetText(ComposeLogText())
@@ -714,6 +754,7 @@ btnLogCopy:SetScript("OnClick", function()
     exportBox:SetFocus()
     exportBox:HighlightText()
 end)
+btnLogCopy:SetPoint("BOTTOMLEFT", logFrame, "BOTTOMLEFT", 96, 10)
 
 -- 有新记录时，窗口开着就实时往下滚
 ns.onLog = function()
@@ -1211,49 +1252,7 @@ local setRows = {}
 -- 本服没有任何圆角或外部贴图可用，开关用「色块 + 1px 细边」做，
 -- 开 = 金底深字，关 = 暗底灰字；整行可点，不必瞄着开关按
 --------------------------------------------------------------
-local function EdgeBox(f)
-    local e = {}
-    for i = 1, 4 do e[i] = f:CreateTexture(nil, "BORDER") end
-    e[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    e[1]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    e[1]:SetHeight(1)
-    e[2]:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-    e[2]:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-    e[2]:SetHeight(1)
-    e[3]:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    e[3]:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-    e[3]:SetWidth(1)
-    e[4]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    e[4]:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-    e[4]:SetWidth(1)
-    return function(a)
-        for i = 1, 4 do e[i]:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], a) end
-    end
-end
-
--- 自绘关闭按钮：原生 UIPanelCloseButton 是红木纹，和整套暗色不搭
-local setClose = CreateFrame("Button", nil, setFrame)
-setClose:SetSize(20, 20)
-setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -9, -9)
-local closeBg = setClose:CreateTexture(nil, "BACKGROUND")
-closeBg:SetAllPoints(setClose)
-closeBg:SetColorTexture(0.07, 0.06, 0.05, 0.75)
-local closeEdge = EdgeBox(setClose)
-closeEdge(0.22)
-local closeX = setClose:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-closeX:SetAllPoints(setClose)
-closeX:SetJustifyH("CENTER")
-closeX:SetText("×")
-closeX:SetTextColor(0.62, 0.60, 0.56)
-setClose:SetScript("OnClick", function() setFrame:Hide() end)
-setClose:SetScript("OnEnter", function()
-    closeEdge(0.70)
-    closeX:SetTextColor(0.95, 0.85, 0.62)
-end)
-setClose:SetScript("OnLeave", function()
-    closeEdge(0.22)
-    closeX:SetTextColor(0.62, 0.60, 0.56)
-end)
+local setClose = SkinClose(setFrame, function() setFrame:Hide() end, -9, -9)
 
 local function GroupTitle(text, y)
     local fs = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1346,53 +1345,10 @@ local function SyncSettings()
     end
 end
 
--- 自绘扁平按钮：UIPanelButtonTemplate 的九宫格木纹在这个客户端上盖不掉，
--- 只能自己用色块 + 1px 边画一个，危险动作直接走暗红字
+-- 设置面板上的工具按钮：统一走 Flat 自绘，危险动作直接走暗红字
 local function MakeBtn(x, y, w, text, onClick, danger)
-    local b = CreateFrame("Button", nil, setFrame)
-    b:SetSize(w, 24)
+    local b = Flat(setFrame, w, 24, text, onClick, danger)
     b:SetPoint("TOPLEFT", setFrame, "TOPLEFT", x, y)
-
-    local bg = b:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(b)
-    local edge = EdgeBox(b)
-    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetAllPoints(b)
-    fs:SetJustifyH("CENTER")
-    fs:SetText(text)
-
-    local function paintNormal()
-        if danger then
-            bg:SetColorTexture(0.105, 0.078, 0.062, 0.95)
-            edge(0.30)
-            fs:SetTextColor(0.80, 0.45, 0.38)
-        else
-            bg:SetColorTexture(0.095, 0.080, 0.064, 0.95)
-            edge(0.22)
-            fs:SetTextColor(0.91, 0.87, 0.79)
-        end
-    end
-    local function paintHover()
-        if danger then
-            bg:SetColorTexture(0.150, 0.100, 0.080, 0.95)
-            edge(0.62)
-            fs:SetTextColor(0.95, 0.56, 0.47)
-        else
-            bg:SetColorTexture(0.165, 0.138, 0.104, 0.95)
-            edge(0.58)
-            fs:SetTextColor(1, 0.93, 0.76)
-        end
-    end
-
-    paintNormal()
-    b:SetScript("OnEnter", paintHover)
-    b:SetScript("OnLeave", paintNormal)
-    b:SetScript("OnMouseDown", function() bg:SetColorTexture(0.040, 0.034, 0.028, 1) end)
-    b:SetScript("OnMouseUp", function()
-        if b.GetMouseOver and b:GetMouseOver() then paintHover() else paintNormal() end
-    end)
-    b:SetScript("OnClick", onClick)
-    b.SetText = function(self, t) fs:SetText(t) end
     return b
 end
 
