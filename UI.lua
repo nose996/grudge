@@ -1451,13 +1451,21 @@ setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, -408)
 
 local setVer = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 setVer:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -16, -408)
-setVer:SetText("|cff8a8279v" .. tostring(GetAddOnMetadata(ADDON, "Version") or ns.version or "") .. "|r")
+local verText = (GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version")) or ns.version or "?"
+setVer:SetText("|cff8a8279v" .. tostring(verText) .. "|r")
 
 ns.OpenSettings = function()
     if not KillListDB then return end
     setFrame:Show()
-    SyncSettings()
     setFrame:Raise()
+    -- 刷新失败也不能把面板挡在后面；出错就打到聊天框，方便报bug时定位
+    local ok, err = pcall(SyncSettings)
+    if not ok then
+        ns.lastSyncError = tostring(err)
+        print("|cffff6b5e[记仇]|r 设置面板刷新出错：" .. tostring(err))
+    else
+        ns.lastSyncError = nil
+    end
 end
 
 tinsert(UISpecialFrames, "KillListMainFrame")
@@ -1555,6 +1563,20 @@ SlashCmdList["KILLLIST"] = function(msg)
             if setFrame:IsShown() then SyncSettings() end
         end
 
+    elseif msg == "ui" or msg:match("^ui%s") then
+        -- 设置面板自检：打不开时先跑这条
+        local n = 0
+        for _ in pairs(setRows) do n = n + 1 end
+        print(format("|cff8ab4ff[记仇]|r 设置面板 shown=%s 尺寸=%sx%s 位置=(%s,%s) 开关行=%d",
+            tostring(setFrame:IsShown()), tostring(setFrame:GetWidth()), tostring(setFrame:GetHeight()),
+            tostring(setFrame:GetLeft()), tostring(setFrame:GetTop()), n))
+        local ok2, err2 = pcall(SyncSettings)
+        print("|cff8ab4ff[记仇]|r 刷新一次：" .. (ok2 and "OK" or tostring(err2)) ..
+            " · 上次错误=" .. tostring(ns.lastSyncError or "无"))
+        if msg == "ui reset" or (msg:match("^ui reset")) then
+            setFrame:ClearAllPoints()
+            setFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
     elseif msg == "diag" then
         if ShowDiag then ShowDiag() end
 
