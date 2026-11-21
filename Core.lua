@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.22"
+ns.version = "2.1.23"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -585,7 +585,9 @@ local function HandlePartyKill(...)
     -- 队友、路人、任何别人，一个标准处理，根本不用去判队伍关系。
     for i = 1, n do
         local v = select(i, ...)
-        raw[i] = tostring(v)
+        -- 类型一起留档：「2.1.23」起 raw 每条写成 `string=xxx` / `number=123` / `nil`
+        -- 这样打一场就能看出参数到底是几段、每段什么类型，不用再对形态拍脑袋
+        raw[i] = type(v) .. "=" .. tostring(v)
         if type(v) == "string" and v ~= "" then
             if not killer and v:find("^Player%-") then
                 killer, killerIdx = v, i
