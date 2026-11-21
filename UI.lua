@@ -1174,7 +1174,7 @@ mmWatch:SetScript("OnEvent", function() UpdateMinimapPos() end)
 -- 设置面板：把常用命令做成按钮
 --------------------------------------------------------------
 local setFrame = CreateFrame("Frame", "KillListSettingsFrame", UIParent, "BackdropTemplate")
-setFrame:SetSize(300, 496)
+setFrame:SetSize(300, 440)
 setFrame:SetPoint("CENTER", UIParent, "CENTER", 250, 30)
 setFrame:SetFrameStrata("DIALOG")
 setFrame:SetToplevel(true)
@@ -1201,36 +1201,122 @@ local setClose = CreateFrame("Button", nil, setFrame, "UIPanelCloseButton")
 setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -3, -3)
 setClose:SetScript("OnClick", function() setFrame:Hide() end)
 
-local btnNearby, btnDebug, btnMinimap, btnTooltip, btnSound, btnScreen, btnEnemy, btnWipe, setStat
+local setStat, btnWipe
+local setRows = {}
+
+--------------------------------------------------------------
+-- 设置面板控件：分组标题 / 行式开关 / 工具按钮
+-- 本服没有任何圆角或外部贴图可用，开关用「色块 + 1px 细边」做，
+-- 开 = 金底深字，关 = 暗底灰字；整行可点，不必瞄着开关按
+--------------------------------------------------------------
+local function EdgeBox(f)
+    local e = {}
+    for i = 1, 4 do e[i] = f:CreateTexture(nil, "BORDER") end
+    e[1]:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    e[1]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    e[1]:SetHeight(1)
+    e[2]:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    e[2]:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    e[2]:SetHeight(1)
+    e[3]:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    e[3]:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    e[3]:SetWidth(1)
+    e[4]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    e[4]:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    e[4]:SetWidth(1)
+    return function(a)
+        for i = 1, 4 do e[i]:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], a) end
+    end
+end
+
+local function GroupTitle(text, y)
+    local fs = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, y)
+    fs:SetText(text)
+    fs:SetTextColor(0.60, 0.58, 0.54)
+
+    local ln = setFrame:CreateTexture(nil, "ARTWORK")
+    ln:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.13)
+    ln:SetPoint("LEFT", fs, "RIGHT", 8, 1)
+    ln:SetPoint("RIGHT", setFrame, "RIGHT", -16, 0)
+    ln:SetHeight(1)
+end
+
+local function MakeRow(key, label, y, dim, onClick)
+    local row = CreateFrame("Button", nil, setFrame)
+    row:SetSize(268, 26)
+    row:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, y)
+
+    local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    name:SetPoint("LEFT", row, "LEFT", 0, 1)
+    name:SetText(label)
+
+    local sw = CreateFrame("Frame", nil, row)
+    sw:SetSize(38, 18)
+    sw:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    local bg = sw:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(sw)
+    local edge = EdgeBox(sw)
+    local st = sw:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    st:SetAllPoints(sw)
+    st:SetJustifyH("CENTER")
+
+    local hr = row:CreateTexture(nil, "ARTWORK")
+    hr:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.07)
+    hr:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    hr:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+    hr:SetHeight(1)
+
+    local function idle()
+        if dim then name:SetTextColor(0.60, 0.58, 0.54)
+        else name:SetTextColor(TXT[1], TXT[2], TXT[3]) end
+    end
+    idle()
+
+    row.__set = function(on)
+        row.__on = on and true or false
+        if row.__on then
+            bg:SetColorTexture(0.680, 0.560, 0.330, 0.92)
+            edge(0.85)
+            st:SetText("开")
+            st:SetTextColor(0.12, 0.09, 0.04)
+        else
+            bg:SetColorTexture(0.090, 0.080, 0.068, 0.88)
+            edge(0.20)
+            st:SetText("关")
+            st:SetTextColor(0.52, 0.50, 0.46)
+        end
+    end
+
+    row:SetScript("OnClick", function() if onClick then onClick() end end)
+    row:SetScript("OnEnter", function() name:SetTextColor(GOLD[1], GOLD[2], GOLD[3]) end)
+    row:SetScript("OnLeave", idle)
+
+    setRows[key] = row
+    row.__set(false)
+    return row
+end
 
 local function SyncSettings()
     local s = KillListDB and KillListDB.settings
     if not s then return end
-    if btnNearby then
-        btnNearby:SetText("附近仇人提醒：" .. (s.nameplate and "|cff8fbf72开|r" or "|cff8a8279关|r"))
+
+    local function set(key, on)
+        local r = setRows[key]
+        if r then r.__set(on) end
     end
-    if btnSound then
-        btnSound:SetText("接近时提示音：" .. ((s.nearbySound ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
-    end
-    if btnScreen then
-        btnScreen:SetText("接近时屏幕提示：" .. ((s.nearbyScreen ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
-    end
-    if btnEnemy then
-        btnEnemy:SetText("顶部敌情条：" .. ((s.enemyBar ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
-    end
-    if btnDebug then
-        btnDebug:SetText("调试输出：" .. (s.debug and "|cff8fbf72开|r" or "|cff8a8279关|r"))
-    end
-    if btnMinimap then
-        btnMinimap:SetText("小地图按钮：" .. (MinimapButtonShown() and "|cff8fbf72开|r" or "|cff8a8279关|r"))
-    end
-    if btnTooltip then
-        btnTooltip:SetText("悬停显示交手记录：" .. ((s.tooltip ~= false) and "|cff8fbf72开|r" or "|cff8a8279关|r"))
-    end
+
+    set("nameplate", s.nameplate and true or false)
+    set("sound",     s.nearbySound ~= false)
+    set("screen",    s.nearbyScreen ~= false)
+    set("enemy",     s.enemyBar ~= false)
+    set("minimap",   MinimapButtonShown())
+    set("tooltip",   s.tooltip ~= false)
+    set("debug",     s.debug and true or false)
 
     if setStat and ns.GetStats then
         local k, d, n = ns.GetStats()
-        setStat:SetText(format("|cff8a8279%s · 名单 %d 人 · 累计 %d 杀 %d 死|r", tostring(UnitName("player")), n, k, d))
+        setStat:SetText(format("|cff8a8279名单 %d 人 · %d 杀 %d 死|r", n, k, d))
     end
 end
 
@@ -1244,51 +1330,33 @@ local function MakeBtn(x, y, w, text, onClick)
     return b
 end
 
-btnNearby = MakeBtn(16, -46, 268, "", function()
+--------------------------------------------------------------
+-- 提醒
+--------------------------------------------------------------
+GroupTitle("提醒", -52)
+
+MakeRow("nameplate", "附近仇人提醒", -66, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.nameplate = not s.nameplate
     SyncSettings()
 end)
 
-btnDebug = MakeBtn(16, -76, 268, "", function()
-    local s = KillListDB and KillListDB.settings
-    if not s then return end
-    s.debug = not s.debug
-    SyncSettings()
-end)
-
-btnMinimap = MakeBtn(16, -106, 268, "", function()
-    local s = KillListDB and KillListDB.settings
-    if not s then return end
-    s.minimapButton = not MinimapButtonShown()
-    SyncMinimapButton()
-    SyncSettings()
-end)
-
-
-btnTooltip = MakeBtn(16, -136, 268, "", function()
-    local s = KillListDB and KillListDB.settings
-    if not s then return end
-    s.tooltip = not (s.tooltip ~= false)
-    SyncSettings()
-end)
-
-btnSound = MakeBtn(16, -166, 268, "", function()
+MakeRow("sound", "接近时提示音", -92, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.nearbySound = not (s.nearbySound ~= false)
     SyncSettings()
 end)
 
-btnScreen = MakeBtn(16, -196, 268, "", function()
+MakeRow("screen", "接近时屏幕提示", -118, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.nearbyScreen = not (s.nearbyScreen ~= false)
     SyncSettings()
 end)
 
-btnEnemy = MakeBtn(16, -226, 268, "", function()
+MakeRow("enemy", "顶部敌情条", -144, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.enemyBar = not (s.enemyBar ~= false)
@@ -1296,24 +1364,56 @@ btnEnemy = MakeBtn(16, -226, 268, "", function()
     SyncSettings()
 end)
 
-MakeBtn(16, -256, 130, "打开日志窗", function()
-    if ns.ToggleLog then ns.ToggleLog() end
-end)
+--------------------------------------------------------------
+-- 显示
+--------------------------------------------------------------
+GroupTitle("显示", -176)
 
-MakeBtn(154, -256, 130, "导出名单", function()
-    if ShowExport then ShowExport() end
-end)
-
-MakeBtn(16, -286, 130, "环境诊断", function()
-    if ns.PrintEnv then ns.PrintEnv() end
-end)
-
-MakeBtn(154, -286, 130, "清理脏数据", function()
-    if ns.Clean then ns.Clean() end
+MakeRow("minimap", "小地图按钮", -190, false, function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    s.minimapButton = not MinimapButtonShown()
+    SyncMinimapButton()
     SyncSettings()
 end)
 
-MakeBtn(16, -316, 130, "换个提示音", function()
+MakeRow("tooltip", "悬停显示交手记录", -216, false, function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    s.tooltip = not (s.tooltip ~= false)
+    SyncSettings()
+end)
+
+--------------------------------------------------------------
+-- 排查
+--------------------------------------------------------------
+GroupTitle("排查", -250)
+
+MakeRow("debug", "调试输出", -264, true, function()
+    local s = KillListDB and KillListDB.settings
+    if not s then return end
+    s.debug = not s.debug
+    SyncSettings()
+end)
+
+--------------------------------------------------------------
+-- 工具（动作，不改设置）
+--------------------------------------------------------------
+GroupTitle("工具", -296)
+
+MakeBtn(16, -310, 130, "日志窗", function()
+    if ns.ToggleLog then ns.ToggleLog() end
+end)
+
+MakeBtn(154, -310, 130, "导出名单", function()
+    if ShowExport then ShowExport() end
+end)
+
+MakeBtn(16, -340, 130, "复制诊断", function()
+    if ShowDiag then ShowDiag() end
+end)
+
+MakeBtn(154, -340, 130, "换个提示音", function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     local n = #SOUNDS
@@ -1322,35 +1422,36 @@ MakeBtn(16, -316, 130, "换个提示音", function()
     print(format("|cff8ab4ff[记仇]|r 提示音 %d/%d：%s", s.alertSound, n, how))
 end)
 
-local wipeArmed = false
-btnWipe = MakeBtn(154, -316, 130, "清空全部名单", function()
-    if not wipeArmed then
-        wipeArmed = true
-        btnWipe:SetText("|cffff3333再点一次，确认清空|r")
+MakeBtn(16, -370, 130, "清理脏数据", function()
+    if ns.Clean then ns.Clean() end
+    SyncSettings()
+end)
+
+btnWipe = MakeBtn(154, -370, 130, "清空名单", function()
+    local armed = btnWipe.__armed
+    if not armed then
+        btnWipe.__armed = true
+        btnWipe:SetText("|cffff6b5e再点一次确认|r")
         C_Timer.After(3, function()
-            wipeArmed = false
-            if btnWipe then btnWipe:SetText("清空全部名单") end
+            btnWipe.__armed = false
+            if btnWipe then btnWipe:SetText("清空名单") end
         end)
     else
-        wipeArmed = false
-        btnWipe:SetText("清空全部名单")
+        btnWipe.__armed = false
+        btnWipe:SetText("清空名单")
         if ns.Reset then ns.Reset() end
         SyncSettings()
     end
 end)
 
-MakeBtn(16, -346, 268, "复制诊断信息", function()
-    if ShowDiag then ShowDiag() end
-end)
+Hairline(setFrame, -400, 0.12)
 
 setStat = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -376)
+setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, -408)
 
-local setHint = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-setHint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -398)
-setHint:SetWidth(266)
-setHint:SetJustifyH("LEFT")
-setHint:SetText("小地图边上那个「仇」字按钮就是入口：左键开名单，右键开设置，按住左键拖动能挪位置。\n姓名板建议一直开着，关掉后只能靠选中目标认人。\n提示音如果没声音，点一下「试播提示音」看聊天框里的诊断。")
+local setVer = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+setVer:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -16, -408)
+setVer:SetText("|cff8a8279v" .. tostring(GetAddOnMetadata(ADDON, "Version") or ns.version or "") .. "|r")
 
 ns.OpenSettings = function()
     if not KillListDB then return end
