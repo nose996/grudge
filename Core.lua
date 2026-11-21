@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.18"
+ns.version = "2.1.19"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1252,7 +1252,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_PVP_KILLS_CHANGED" then
         -- 这个计数器不可靠：队友的战果、以及灰名/宠物的判定都可能让它动；触发时 target 已被清空，
         -- 根本拿不到是谁。所以它只当「发生过一次 PVP 击杀」的痕迹，绝不拿它写名单。
-        -- 2.1.18 实机踩过：只打了几枪并没打死的人，被这条路径拿「最近命中」猜成了我的击杀。
+        -- 2.1.19 实机踩过：只打了几枪并没打死的人，被这条路径拿「最近命中」猜成了我的击杀。
         -- 真正写名单只认带名字或带 Player GUID 的信号：PARTY_KILL / 荣誉消息 / 「你 杀死了 XXX」。
         local guess = ns.lastHit and ns.lastHit.name
         ns.Log(format("收到 PVP 击杀数变化事件（目标=%s）· 最近命中=%s · 未确认是谁，不写名单（可用 /kl add 名字 补记）",
@@ -1297,8 +1297,17 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(HandlePlate, unit)
 
     elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
-        -- 被暴雪拦下来的具体函数名会在这里显示
-        print(format("|cffff3333[记仇 拦截]|r 插件 %s 调用了受限函数：%s",
-            tostring((...)), tostring((select(2, ...)))))
+        -- 这两个事件是全局广播：任何插件被拦都会通知到我们。
+        -- 不过滤就会把别人的报错当自己的刷屏——Questie 每摆一个按钮碰一次
+        -- SetPassThroughButtons，实测能把聊天框刷满一整屏。
+        local who, fn = ...
+        local whoS = who and tostring(who) or nil
+        if not whoS or whoS:find(ADDON, 1, true) then
+            print(format("|cffff3333[记仇 拦截]|r 插件 %s 调用了受限函数：%s",
+                tostring(who), tostring(fn)))
+            ns.Log(format("本插件调用了受限函数：%s", tostring(fn)), "warn")
+        elseif KillListDB and KillListDB.settings and KillListDB.settings.debug then
+            ns.Log(format("别的插件被拦（已忽略）：%s · %s", whoS, tostring(fn)), "info")
+        end
     end
 end)
