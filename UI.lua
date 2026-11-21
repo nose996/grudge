@@ -1565,6 +1565,9 @@ SlashCmdList["KILLLIST"] = function(msg)
     elseif msg == "env" then
         ns.PrintEnv()
 
+    elseif msg == "pk" then
+        if ns.DumpPartyKill then ns.DumpPartyKill() end
+
     elseif msg == "name" then
         if ns.DumpName then ns.DumpName() end
 
@@ -1625,7 +1628,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl pk 击杀原始参数 · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then
