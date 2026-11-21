@@ -1195,11 +1195,13 @@ setFrame:Hide()
 local setTitle = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 setTitle:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 18, -14)
 setTitle:SetText("|cffd8b46a记仇|r |cff8a8279设置|r")
-Hairline(setFrame, -40, 0.20)
+Hairline(setFrame, -40, 0.32)
 
-local setClose = CreateFrame("Button", nil, setFrame, "UIPanelCloseButton")
-setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -3, -3)
-setClose:SetScript("OnClick", function() setFrame:Hide() end)
+-- 面板暖色底：原生 DialogFrame 背景偏冷黑，盖一层很淡的暖棕，颜色才和主窗一致
+local panelTint = setFrame:CreateTexture(nil, "BACKGROUND")
+panelTint:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 7, -7)
+panelTint:SetPoint("BOTTOMRIGHT", setFrame, "BOTTOMRIGHT", -7, 7)
+panelTint:SetColorTexture(0.22, 0.15, 0.09, 0.42)
 
 local setStat, btnWipe
 local setRows = {}
@@ -1229,6 +1231,30 @@ local function EdgeBox(f)
     end
 end
 
+-- 自绘关闭按钮：原生 UIPanelCloseButton 是红木纹，和整套暗色不搭
+local setClose = CreateFrame("Button", nil, setFrame)
+setClose:SetSize(20, 20)
+setClose:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -9, -9)
+local closeBg = setClose:CreateTexture(nil, "BACKGROUND")
+closeBg:SetAllPoints(setClose)
+closeBg:SetColorTexture(0.07, 0.06, 0.05, 0.75)
+local closeEdge = EdgeBox(setClose)
+closeEdge(0.22)
+local closeX = setClose:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+closeX:SetAllPoints(setClose)
+closeX:SetJustifyH("CENTER")
+closeX:SetText("×")
+closeX:SetTextColor(0.62, 0.60, 0.56)
+setClose:SetScript("OnClick", function() setFrame:Hide() end)
+setClose:SetScript("OnEnter", function()
+    closeEdge(0.70)
+    closeX:SetTextColor(0.95, 0.85, 0.62)
+end)
+setClose:SetScript("OnLeave", function()
+    closeEdge(0.22)
+    closeX:SetTextColor(0.62, 0.60, 0.56)
+end)
+
 local function GroupTitle(text, y)
     local fs = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, y)
@@ -1236,7 +1262,7 @@ local function GroupTitle(text, y)
     fs:SetTextColor(0.60, 0.58, 0.54)
 
     local ln = setFrame:CreateTexture(nil, "ARTWORK")
-    ln:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.13)
+    ln:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.22)
     ln:SetPoint("LEFT", fs, "RIGHT", 8, 1)
     ln:SetPoint("RIGHT", setFrame, "RIGHT", -16, 0)
     ln:SetHeight(1)
@@ -1252,7 +1278,7 @@ local function MakeRow(key, label, y, dim, onClick)
     name:SetText(label)
 
     local sw = CreateFrame("Frame", nil, row)
-    sw:SetSize(38, 18)
+    sw:SetSize(40, 18)
     sw:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     local bg = sw:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(sw)
@@ -1262,7 +1288,7 @@ local function MakeRow(key, label, y, dim, onClick)
     st:SetJustifyH("CENTER")
 
     local hr = row:CreateTexture(nil, "ARTWORK")
-    hr:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.07)
+    hr:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.11)
     hr:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
     hr:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
     hr:SetHeight(1)
@@ -1276,15 +1302,15 @@ local function MakeRow(key, label, y, dim, onClick)
     row.__set = function(on)
         row.__on = on and true or false
         if row.__on then
-            bg:SetColorTexture(0.680, 0.560, 0.330, 0.92)
-            edge(0.85)
+            bg:SetColorTexture(0.780, 0.640, 0.380, 1)
+            edge(0.90)
             st:SetText("开")
-            st:SetTextColor(0.12, 0.09, 0.04)
+            st:SetTextColor(0.10, 0.07, 0.02)
         else
-            bg:SetColorTexture(0.090, 0.080, 0.068, 0.88)
-            edge(0.20)
+            bg:SetColorTexture(0.100, 0.088, 0.074, 0.90)
+            edge(0.18)
             st:SetText("关")
-            st:SetTextColor(0.52, 0.50, 0.46)
+            st:SetTextColor(0.50, 0.48, 0.44)
         end
     end
 
@@ -1320,36 +1346,76 @@ local function SyncSettings()
     end
 end
 
-local function MakeBtn(x, y, w, text, onClick)
-    local b = CreateFrame("Button", nil, setFrame, "UIPanelButtonTemplate")
+-- 自绘扁平按钮：UIPanelButtonTemplate 的九宫格木纹在这个客户端上盖不掉，
+-- 只能自己用色块 + 1px 边画一个，危险动作直接走暗红字
+local function MakeBtn(x, y, w, text, onClick, danger)
+    local b = CreateFrame("Button", nil, setFrame)
     b:SetSize(w, 24)
     b:SetPoint("TOPLEFT", setFrame, "TOPLEFT", x, y)
-    b:SetText(text)
+
+    local bg = b:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(b)
+    local edge = EdgeBox(b)
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetAllPoints(b)
+    fs:SetJustifyH("CENTER")
+    fs:SetText(text)
+
+    local function paintNormal()
+        if danger then
+            bg:SetColorTexture(0.105, 0.078, 0.062, 0.95)
+            edge(0.30)
+            fs:SetTextColor(0.80, 0.45, 0.38)
+        else
+            bg:SetColorTexture(0.095, 0.080, 0.064, 0.95)
+            edge(0.22)
+            fs:SetTextColor(0.91, 0.87, 0.79)
+        end
+    end
+    local function paintHover()
+        if danger then
+            bg:SetColorTexture(0.150, 0.100, 0.080, 0.95)
+            edge(0.62)
+            fs:SetTextColor(0.95, 0.56, 0.47)
+        else
+            bg:SetColorTexture(0.165, 0.138, 0.104, 0.95)
+            edge(0.58)
+            fs:SetTextColor(1, 0.93, 0.76)
+        end
+    end
+
+    paintNormal()
+    b:SetScript("OnEnter", paintHover)
+    b:SetScript("OnLeave", paintNormal)
+    b:SetScript("OnMouseDown", function() bg:SetColorTexture(0.040, 0.034, 0.028, 1) end)
+    b:SetScript("OnMouseUp", function()
+        if b.GetMouseOver and b:GetMouseOver() then paintHover() else paintNormal() end
+    end)
     b:SetScript("OnClick", onClick)
-    FlatButton(b)
+    b.SetText = function(self, t) fs:SetText(t) end
     return b
 end
 
 --------------------------------------------------------------
 -- 提醒
 --------------------------------------------------------------
-GroupTitle("提醒", -52)
+GroupTitle("提醒", -46)
 
-MakeRow("nameplate", "附近仇人提醒", -66, false, function()
+MakeRow("nameplate", "附近仇人提醒", -60, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.nameplate = not s.nameplate
     SyncSettings()
 end)
 
-MakeRow("sound", "接近时提示音", -92, false, function()
+MakeRow("sound", "接近时提示音", -88, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.nearbySound = not (s.nearbySound ~= false)
     SyncSettings()
 end)
 
-MakeRow("screen", "接近时屏幕提示", -118, false, function()
+MakeRow("screen", "接近时屏幕提示", -116, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.nearbyScreen = not (s.nearbyScreen ~= false)
@@ -1367,9 +1433,9 @@ end)
 --------------------------------------------------------------
 -- 显示
 --------------------------------------------------------------
-GroupTitle("显示", -176)
+GroupTitle("显示", -178)
 
-MakeRow("minimap", "小地图按钮", -190, false, function()
+MakeRow("minimap", "小地图按钮", -192, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.minimapButton = not MinimapButtonShown()
@@ -1377,7 +1443,7 @@ MakeRow("minimap", "小地图按钮", -190, false, function()
     SyncSettings()
 end)
 
-MakeRow("tooltip", "悬停显示交手记录", -216, false, function()
+MakeRow("tooltip", "悬停显示交手记录", -220, false, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.tooltip = not (s.tooltip ~= false)
@@ -1387,9 +1453,9 @@ end)
 --------------------------------------------------------------
 -- 排查
 --------------------------------------------------------------
-GroupTitle("排查", -250)
+GroupTitle("排查", -254)
 
-MakeRow("debug", "调试输出", -264, true, function()
+MakeRow("debug", "调试输出", -268, true, function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     s.debug = not s.debug
@@ -1399,21 +1465,21 @@ end)
 --------------------------------------------------------------
 -- 工具（动作，不改设置）
 --------------------------------------------------------------
-GroupTitle("工具", -296)
+GroupTitle("工具", -302)
 
-MakeBtn(16, -310, 130, "日志窗", function()
+MakeBtn(16, -318, 130, "日志窗", function()
     if ns.ToggleLog then ns.ToggleLog() end
 end)
 
-MakeBtn(154, -310, 130, "导出名单", function()
+MakeBtn(154, -318, 130, "导出名单", function()
     if ShowExport then ShowExport() end
 end)
 
-MakeBtn(16, -340, 130, "复制诊断", function()
+MakeBtn(16, -346, 130, "复制诊断", function()
     if ShowDiag then ShowDiag() end
 end)
 
-MakeBtn(154, -340, 130, "换个提示音", function()
+MakeBtn(154, -346, 130, "换个提示音", function()
     local s = KillListDB and KillListDB.settings
     if not s then return end
     local n = #SOUNDS
@@ -1422,12 +1488,12 @@ MakeBtn(154, -340, 130, "换个提示音", function()
     print(format("|cff8ab4ff[记仇]|r 提示音 %d/%d：%s", s.alertSound, n, how))
 end)
 
-MakeBtn(16, -370, 130, "清理脏数据", function()
+MakeBtn(16, -374, 130, "清理脏数据", function()
     if ns.Clean then ns.Clean() end
     SyncSettings()
 end)
 
-btnWipe = MakeBtn(154, -370, 130, "清空名单", function()
+btnWipe = MakeBtn(154, -374, 130, "清空名单", function()
     local armed = btnWipe.__armed
     if not armed then
         btnWipe.__armed = true
@@ -1444,13 +1510,13 @@ btnWipe = MakeBtn(154, -370, 130, "清空名单", function()
     end
 end)
 
-Hairline(setFrame, -400, 0.12)
+Hairline(setFrame, -406, 0.18)
 
 setStat = setFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, -408)
+setStat:SetPoint("TOPLEFT", setFrame, "TOPLEFT", 16, -414)
 
 local setVer = setFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-setVer:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -16, -408)
+setVer:SetPoint("TOPRIGHT", setFrame, "TOPRIGHT", -16, -414)
 local verText = (GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version")) or ns.version or "?"
 setVer:SetText("|cff8a8279v" .. tostring(verText) .. "|r")
 
