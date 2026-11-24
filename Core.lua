@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.45"
+ns.version = "2.1.46"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -982,6 +982,13 @@ local function RecordDeathFromRecap()
         return
     end
 
+    -- 主门槛：只有本次 PLAYER_DEAD 之后的补读才允许读回顾。
+    -- 杀野怪、日常脱战也会触发 REGEN 补读，此时回顾缓存里可能残留上一场
+    -- （战场/更早死亡）的旧记录；不是刚死的场景一律不读，避免旧凶手被重生进名单。
+    if not ns.deadPending then
+        return false
+    end
+
     -- 这次死亡若发生在战场/竞技场（PLAYER_DEAD 那一刻记下的标记），
     -- 后续晚到、脱战补读的回顾一律不记，避免战场凶手被补进野外名单。
     if ns.deadInPvp then
@@ -1701,8 +1708,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
         C_Timer.After(1.0, tryRecap)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- 脱离战斗再补读一次死亡回顾，兜底战场 recap 填充过晚
-        pcall(RecordDeathFromRecap)
+        -- 脱离战斗再补读一次死亡回顾，兜底 recap 填充过晚；
+        -- 仅当本次确实刚死过（deadPending 挂着）才补读，普通脱战不碰残留旧回顾。
+        if ns.deadPending then
+            pcall(RecordDeathFromRecap)
+        end
 
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         local unit = ...
