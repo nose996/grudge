@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.34"
+ns.version = "2.1.35"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -368,12 +368,7 @@ end
 
 -- 参数序列化：普通值转字符串；table（或不可读的包装对象）展开一层键值。
 -- 用来排查事件参数 / 结构化表里是否藏着受害者 GUID/名字。
-local function ArgText(v)
-    local ty = type(v)
-    local plain = SafeStr(v)
-    if plain:sub(1, 1) ~= "<" then return ty, plain end
-
-    -- 不可读值：可能是 secret 包装对象，尝试 pairs 展开一层；失败就标注受保护
+local function ExpandTable(v)
     local parts = {}
     local cnt = 0
     local okP = pcall(function()
@@ -387,6 +382,22 @@ local function ArgText(v)
     if okP and cnt > 0 then
         return "table", "{" .. Join(parts, ", ") .. "}"
     end
+    return nil
+end
+
+local function ArgText(v)
+    local ty = type(v)
+    -- table 优先展开一层；空表/不可遍历才退回地址串
+    if ty == "table" then
+        local exp = ExpandTable(v)
+        if exp then return exp end
+        return "table", SafeStr(v)
+    end
+    local plain = SafeStr(v)
+    if plain:sub(1, 1) ~= "<" then return ty, plain end
+    -- 非 table 但不可读：可能是 secret 包装对象，再尝试 pairs 展开；失败标注受保护
+    local exp = ExpandTable(v)
+    if exp then return exp end
     return ty, plain .. "（不可读/受保护）"
 end
 
