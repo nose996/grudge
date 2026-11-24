@@ -377,26 +377,34 @@ local function UpdateRow(r, entry, index)
 end
 
 RefreshList = function()
-    local list = ns.Players() and ns.GetList(kind, filterText, true) or {}
+    local players = ns.Players()
+    local list = players and ns.GetList(kind, filterText, true) or {}
 
     content:SetWidth(math.max(100, scroll:GetWidth() - 2))
 
-    for i = 1, #list do
-        local r = rowPool[i]
-        if not r then
-            r = CreateRow(i)
-            rowPool[i] = r
-        end
-        r:Show()
-        UpdateRow(r, list[i], i)
-    end
-
-    for i = #list + 1, #rowPool do
+    -- 先把行池全部收起并解绑，避免上一页 / 上一场的旧条目残留在屏幕上
+    for i = 1, #rowPool do
         rowPool[i]:Hide()
         rowPool[i].entry = nil
     end
 
-    content:SetHeight(math.max(1, #list * ROW_H))
+    local dIdx = 0
+    for i = 1, #list do
+        local entry = list[i]
+        -- 二次校验：条目必须还在当前名单表里，丢弃跨表残留的孤立对象
+        if not players or players[entry.key or entry.name] == entry then
+            dIdx = dIdx + 1
+            local r = rowPool[dIdx]
+            if not r then
+                r = CreateRow(dIdx)
+                rowPool[dIdx] = r
+            end
+            r:Show()
+            UpdateRow(r, entry, dIdx)
+        end
+    end
+
+    content:SetHeight(math.max(1, dIdx * ROW_H))
 
     local cDeath = #ns.GetList("death", nil, false)
     local cKill  = #ns.GetList("kill",  nil, false)
@@ -411,7 +419,7 @@ RefreshList = function()
         periodFS:SetText(format("|cff8a8279今天|r  %d 杀 %d 死      |cff8a8279本周|r  %d 杀 %d 死", kt, dt, kw, dw))
     end
 
-    if #list == 0 then
+    if dIdx == 0 then
         if not emptyText then
             emptyText = content:CreateFontString(nil, "OVERLAY", "GameFontDisable")
             emptyText:SetPoint("TOP", content, "TOP", 0, -40)
