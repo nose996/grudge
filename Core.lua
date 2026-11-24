@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.31"
+ns.version = "2.1.32"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -340,15 +340,34 @@ local RAW_KEEP = { HONOR_GAIN = true, PVP_KILLS = true, MISC_INFO = true, PARTY_
 local function SafeStr(v)
     local ty = type(v)
     local s
-    if ty == "string" then s = v
-    elseif ty == "number" or ty == "boolean" then s = tostring(v)
-    elseif ty == "nil" then s = "nil"
+    if ty == "string" then
+        s = v
+    elseif ty == "number" or ty == "boolean" then
+        s = tostring(v)
+    elseif ty == "nil" then
+        s = "nil"
     else
         local ok, r = pcall(tostring, v)
         if ok and type(r) == "string" then s = r end
     end
+    -- 可拼接校验：本服 type 可能误报，再试一次空串拼接，失败就换成占位
     if type(s) ~= "string" then return "<" .. ty .. ">" end
+    local okC = pcall(function() return "" .. s end)
+    if not okC then return "<" .. ty .. ">" end
     return s
+end
+
+-- 绕过 table.concat：本服 secret 值即便 type 误报成 string，concat 内部仍会按原生类型判崩；
+-- 改成逐段字符串累加，每段再过一次 SafeStr 兜底。
+local function Join(arr, sep)
+    local out = ""
+    for _, x in ipairs(arr) do
+        local s = SafeStr(x)
+        if s ~= "" then
+            if out == "" then out = s else out = out .. sep .. s end
+        end
+    end
+    return out
 end
 
 -- 参数序列化：table 展开一层（最多 20 个键），把里面的键/类型/值打出来；
@@ -367,7 +386,7 @@ local function ArgText(v)
         end
     end
     local tail = cnt > 20 and " …（共" .. cnt .. "键）" or ""
-    return "table", "{" .. table.concat(parts, ", ") .. "}" .. tail
+    return "table", "{" .. Join(parts, ", ") .. "}" .. tail
 end
 
 function ns.NoteRaw(event, ...)
@@ -412,7 +431,8 @@ local function rawLines()
                 local seg = SafeStr(i) .. ":" .. SafeStr(a.type) .. "=" .. SafeStr(a.val)
                 if type(seg) == "string" then parts[#parts + 1] = seg end
             end
-            local body = #parts > 0 and table.concat(parts, " │ ") or "（无参数）"
+            local body = Join(parts, " │ ")
+            if body == "" then body = "（无参数）" end
             out[#out + 1] = SafeStr(date("%H:%M:%S", v.t)) .. "  " .. SafeStr(v.event)
                 .. "（" .. SafeStr(v.n) .. " 段）  " .. SafeStr(body)
         end
@@ -421,12 +441,7 @@ local function rawLines()
 end
 
 function ns.RawText()
-    local lines = rawLines()
-    local safe = {}
-    for _, ln in ipairs(lines) do
-        if type(ln) == "string" then safe[#safe + 1] = ln end
-    end
-    return table.concat(safe, "\n")
+    return Join(rawLines(), "\n")
 end
 
 function ns.DumpRaw()
