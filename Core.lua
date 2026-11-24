@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.30"
+ns.version = "2.1.31"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -335,16 +335,20 @@ end
 ns.rawBuf = {}
 local RAW_KEEP = { HONOR_GAIN = true, PVP_KILLS = true, MISC_INFO = true, PARTY_KILL = true, BG_SYS = true }
 
--- 安全转字符串：本服存在 secret 等非常规类型，tostring 不一定返回字符串，
--- 强制兜底成原生 string，避免 table.concat 因混入 secret 直接报错。
+-- 安全转字符串：本服存在 secret 等非常规类型，tostring/format 不一定返回字符串，
+-- 每一步都断言最终是原生 string，不是就替换占位，避免 table.concat 混入 secret 崩溃。
 local function SafeStr(v)
     local ty = type(v)
-    if ty == "string" then return v end
-    if ty == "number" or ty == "boolean" then return tostring(v) end
-    if ty == "nil" then return "nil" end
-    local ok, s = pcall(tostring, v)
-    if ok and type(s) == "string" and s ~= "" then return s end
-    return "<" .. ty .. ">"
+    local s
+    if ty == "string" then s = v
+    elseif ty == "number" or ty == "boolean" then s = tostring(v)
+    elseif ty == "nil" then s = "nil"
+    else
+        local ok, r = pcall(tostring, v)
+        if ok and type(r) == "string" then s = r end
+    end
+    if type(s) ~= "string" then return "<" .. ty .. ">" end
+    return s
 end
 
 -- 参数序列化：table 展开一层（最多 20 个键），把里面的键/类型/值打出来；
@@ -358,10 +362,11 @@ local function ArgText(v)
         cnt = cnt + 1
         if cnt <= 20 then
             local xt = type(x)
-            parts[#parts + 1] = SafeStr(k) .. "=" .. xt .. ":" .. SafeStr(x)
+            local seg = SafeStr(k) .. "=" .. xt .. ":" .. SafeStr(x)
+            if type(seg) == "string" then parts[#parts + 1] = seg end
         end
     end
-    local tail = cnt > 20 and format(" …（共%d键）", cnt) or ""
+    local tail = cnt > 20 and " …（共" .. cnt .. "键）" or ""
     return "table", "{" .. table.concat(parts, ", ") .. "}" .. tail
 end
 
@@ -384,8 +389,12 @@ function ns.NoteRaw(event, ...)
     local n = select("#", ...)
     for i = 1, n do
         local v = select(i, ...)
-        local ty, val = ArgText(v)
-        args[i] = { type = ty, val = val }
+        local okA, ty, val = pcall(ArgText, v)
+        if okA then
+            args[i] = { type = SafeStr(ty), val = SafeStr(val) }
+        else
+            args[i] = { type = "error", val = SafeStr(ty) }
+        end
     end
     t[#t + 1] = { t = time(), event = event, n = n, args = args }
 end
@@ -396,22 +405,28 @@ local function rawLines()
     if #t == 0 then
         out[#out + 1] = "还没有捕获到信号，打一场 PVP 再看"
     else
-        out[#out + 1] = format("最近 %d 条信号原始参数（时间 · 事件 · 段数 · 每段 类型=值）", #t)
+        out[#out + 1] = "最近 " .. #t .. " 条信号原始参数（时间 · 事件 · 段数 · 每段 类型=值）"
         for _, v in ipairs(t) do
             local parts = {}
             for i, a in ipairs(v.args) do
-                parts[#parts + 1] = format("%d:%s=%s", i, SafeStr(a.type), SafeStr(a.val))
+                local seg = SafeStr(i) .. ":" .. SafeStr(a.type) .. "=" .. SafeStr(a.val)
+                if type(seg) == "string" then parts[#parts + 1] = seg end
             end
-            out[#out + 1] = format("  %s  %s（%d 段）  %s",
-                date("%H:%M:%S", v.t), v.event, v.n,
-                #parts > 0 and table.concat(parts, " │ ") or "（无参数）")
+            local body = #parts > 0 and table.concat(parts, " │ ") or "（无参数）"
+            out[#out + 1] = SafeStr(date("%H:%M:%S", v.t)) .. "  " .. SafeStr(v.event)
+                .. "（" .. SafeStr(v.n) .. " 段）  " .. SafeStr(body)
         end
     end
     return out
 end
 
 function ns.RawText()
-    return table.concat(rawLines(), "\n")
+    local lines = rawLines()
+    local safe = {}
+    for _, ln in ipairs(lines) do
+        if type(ln) == "string" then safe[#safe + 1] = ln end
+    end
+    return table.concat(safe, "\n")
 end
 
 function ns.DumpRaw()
