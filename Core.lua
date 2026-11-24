@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.38"
+ns.version = "2.1.39"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -569,11 +569,13 @@ local function Record(name, kind, guid, noDedupe, src)
         recentKill[name] = now
     end
 
-    -- 一次死亡只算一次：死亡回顾可能被重复触发，15 秒内同一个人不重复计入
+    -- 一次死亡只算一次：死亡回顾可能被重复触发，15 秒内同一个人不重复计入。
+    -- 优先按 GUID 去重（碎片名一场内可能变），拿不到 GUID 才退回按名字
     if kind == "death" and not noDedupe then
-        local last = recentDeath[name]
+        local dkey = guid or name
+        local last = recentDeath[dkey]
         if last and (now - last) <= 15 then return nil end
-        recentDeath[name] = now
+        recentDeath[dkey] = now
     end
 
     local e = GetEntry(name, guid)
@@ -1422,6 +1424,23 @@ function ns.DiagText()
 
     local k, d, n = ns.GetStats()
     lines[#lines + 1] = format("数据：名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d)
+
+    -- 分桶诊断：确认写入和读取落在同一个角色桶，避免名字全/半不一致把数据写进空桶
+    local curKey = select(1, CharKey())
+    local direct = 0
+    if PLAYERS then for _ in pairs(PLAYERS) do direct = direct + 1 end end
+    lines[#lines + 1] = format("分桶：当前 key=%s · 内存名单 %d 条", SafeStr(curKey), direct)
+    if KillListDB and type(KillListDB.chars) == "table" then
+        local buckets = {}
+        for bk, bv in pairs(KillListDB.chars) do
+            local cnt = 0
+            if type(bv) == "table" and type(bv.players) == "table" then
+                for _ in pairs(bv.players) do cnt = cnt + 1 end
+            end
+            buckets[#buckets + 1] = SafeStr(bk) .. "(" .. cnt .. ")"
+        end
+        lines[#lines + 1] = "存档桶：" .. (#buckets > 0 and Join(buckets, ", ") or "（无）")
+    end
 
     return table.concat(lines, "\n")
 end

@@ -2,7 +2,7 @@
 ## Title: 记仇 · PVP 交手记录
 ## Notes: 自动记录杀过你的人和你杀过的人，形成可标记、可导出的名单。
 ## Author: nose996
-## Version: 2.1.38
+## Version: 2.1.39
 ## SavedVariables: KillListDB
 ## X-Category: PvP
 

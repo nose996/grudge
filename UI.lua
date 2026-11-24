@@ -293,6 +293,7 @@ local rowPool = {}
 
 local function CreateRow(i)
     local r = CreateFrame("Button", nil, content)
+    r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     r:SetHeight(ROW_H)
     r:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i - 1) * ROW_H)
     r:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -(i - 1) * ROW_H)
@@ -376,9 +377,7 @@ local function UpdateRow(r, entry, index)
 end
 
 RefreshList = function()
-    if not ns.Players() then return end
-
-    local list = ns.GetList(kind, filterText, true)
+    local list = ns.Players() and ns.GetList(kind, filterText, true) or {}
 
     content:SetWidth(math.max(100, scroll:GetWidth() - 2))
 
