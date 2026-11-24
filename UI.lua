@@ -169,7 +169,7 @@ local kind       = "death"   -- death = 杀过我的；kill = 我杀过的
 local selected   = nil
 local filterText = ""
 
-local RefreshList, UpdateDetail, SelectEntry, SetKind, ShowExport, ShowDiag
+local RefreshList, UpdateDetail, SelectEntry, SetKind, ShowExport, ShowDiag, ShowProbe
 local emptyText, statFS, periodFS
 
 --------------------------------------------------------------
@@ -644,6 +644,15 @@ ShowDiag = function()
     exportTitle:SetText("|cffd8b46a诊断信息|r")
     exportHint:SetText("全选复制这段发给作者即可。内容只有版本、接口状态和名单人数，不含账号信息。")
     exportBox:SetText(ns.DiagText and ns.DiagText() or "诊断接口不可用")
+    exportFrame:Show()
+    exportBox:SetFocus()
+    exportBox:HighlightText()
+end
+-- 探针窗：环境 + PARTY_KILL 留档 + 信号原始参数，一窗复制导出，不用截图
+ShowProbe = function()
+    exportTitle:SetText("|cffd8b46a探针诊断|r")
+    exportHint:SetText("Ctrl+A 全选、Ctrl+C 复制。含环境、PARTY_KILL 留档和信号原始参数，不含账号信息。")
+    exportBox:SetText(ns.ProbeText and ns.ProbeText() or "探针接口不可用")
     exportFrame:Show()
     exportBox:SetFocus()
     exportBox:HighlightText()
@@ -1431,8 +1440,8 @@ MakeBtn(154, -318, 130, "导出名单", function()
     if ShowExport then ShowExport() end
 end)
 
-MakeBtn(16, -346, 130, "复制诊断", function()
-    if ShowDiag then ShowDiag() end
+MakeBtn(16, -346, 130, "探针诊断", function()
+    if ShowProbe then ShowProbe() end
 end)
 
 MakeBtn(154, -346, 130, "换个提示音", function()
@@ -1562,14 +1571,8 @@ SlashCmdList["KILLLIST"] = function(msg)
     elseif msg == "export" then
         ShowExport()
 
-    elseif msg == "env" then
-        ns.PrintEnv()
-
-    elseif msg == "pk" then
-        if ns.DumpPartyKill then ns.DumpPartyKill() end
-
-    elseif msg == "raw" then
-        if ns.DumpRaw then ns.DumpRaw() end
+    elseif msg == "env" or msg == "pk" or msg == "raw" or msg == "probe" then
+        if ShowProbe then ShowProbe() end
 
     elseif msg == "name" then
         if ns.DumpName then ns.DumpName() end
@@ -1631,7 +1634,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl env 环境 · /kl pk 击杀原始参数 · /kl raw 全部信号原始参数 · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl probe 探针诊断窗（env/pk/raw 同一窗口可复制导出） · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if frame:IsShown() then

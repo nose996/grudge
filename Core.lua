@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.26"
+ns.version = "2.1.27"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -288,41 +288,56 @@ function ns.NotePartyKill(raw, victim, dropped, killer)
     }
 end
 
-function ns.DumpPartyKill()
+local function partyKillLines()
+    local out = {}
     local t = ns.pkRaw or {}
     if #t == 0 then
-        print("|cff8ab4ff[记仇]|r 还没有捕获到 PARTY_KILL，进游戏打个玩家再看")
+        out[#out + 1] = "PARTY_KILL：还没有捕获到，进游戏打个玩家再看"
     else
-        print(format("|cff8ab4ff[记仇]|r 最近 %d 次 PARTY_KILL（时间 · 当时的队伍人数 · 原始参数 → 判定结果）", #t))
-        for i, v in ipairs(t) do
-            print(format("  %s  小队%d/团队%d  %s  →  %s%s",
+        out[#out + 1] = format("最近 %d 次 PARTY_KILL（时间 · 队伍人数 · 原始参数 → 判定结果）", #t)
+        for _, v in ipairs(t) do
+            out[#out + 1] = format("  %s  小队%d/团队%d  %s  →  %s%s",
                 date("%H:%M:%S", v.t), v.np or 0, v.nr or 0, v.raw,
                 v.dropped and "丢弃（击杀者不是我）" or v.victim,
-                v.dropped and (" · 击杀者 " .. tostring(v.killer)) or ""))
+                v.dropped and (" · 击杀者 " .. tostring(v.killer)) or "")
         end
     end
 
     -- 顺带把队伍接口一起打出来：判断「队友识别」到底有没有生效，就看这一段
     local np = (GetNumPartyMembers and GetNumPartyMembers()) or 0
     local nr = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    print(format("|cff8ab4ff[记仇]|r 队伍状态：小队 %d 人 · 团队 %d 人", np, nr))
+    out[#out + 1] = format("队伍状态：小队 %d 人 · 团队 %d 人", np, nr)
     for i = 1, np do
-        print(format("    party%d：%s · %s", i,
-            tostring(BestName("party" .. i)), tostring(UnitGUID("party" .. i))))
+        out[#out + 1] = format("    party%d：%s · %s", i,
+            tostring(BestName("party" .. i)), tostring(UnitGUID("party" .. i)))
     end
     for i = 1, math.min(nr, 10) do
-        print(format("    raid%d：%s · %s", i,
-            tostring(BestName("raid" .. i)), tostring(UnitGUID("raid" .. i))))
+        out[#out + 1] = format("    raid%d：%s · %s", i,
+            tostring(BestName("raid" .. i)), tostring(UnitGUID("raid" .. i)))
+    end
+    return out
+end
+
+function ns.PartyKillText()
+    return table.concat(partyKillLines(), "\n")
+end
+
+function ns.DumpPartyKill()
+    for _, line in ipairs(partyKillLines()) do
+        print("|cff8ab4ff[记仇]|r " .. line)
     end
 end
 
 -- 通用原始参数留档（/kl raw）。2.1.25 游戏更新后 PARTY_KILL 不再推送，
 -- 击杀侧只剩荣誉消息和计数事件；它们到底带几段、每段是名字还是 GUID，
 -- 不能再拍脑袋猜，先把原始参数连类型一起留档，打一场再回看。
+-- 2.1.27：SYSTEM（离队/找玩家/排队这类刷屏消息）不进缓冲，免得把荣誉、计数记录挤掉。
 ns.rawBuf = {}
+local RAW_KEEP = { HONOR_GAIN = true, PVP_KILLS = true, MISC_INFO = true, PARTY_KILL = true, BG_SYS = true }
 function ns.NoteRaw(event, ...)
+    if not RAW_KEEP[event] then return end
     local t = ns.rawBuf
-    if #t >= 24 then table.remove(t, 1) end
+    if #t >= 40 then table.remove(t, 1) end
     local args = {}
     local n = select("#", ...)
     for i = 1, n do
@@ -332,21 +347,33 @@ function ns.NoteRaw(event, ...)
     t[#t + 1] = { t = time(), event = event, n = n, args = args }
 end
 
-function ns.DumpRaw()
+local function rawLines()
+    local out = {}
     local t = ns.rawBuf or {}
     if #t == 0 then
-        print("|cff8ab4ff[记仇]|r 还没有捕获到信号，打一场 PVP 再看")
-        return
-    end
-    print(format("|cff8ab4ff[记仇]|r 最近 %d 条信号原始参数（时间 · 事件 · 段数 · 每段 类型=值）", #t))
-    for _, v in ipairs(t) do
-        local parts = {}
-        for i, a in ipairs(v.args) do
-            parts[#parts + 1] = format("%d:%s=%s", i, a.type, a.val)
+        out[#out + 1] = "还没有捕获到信号，打一场 PVP 再看"
+    else
+        out[#out + 1] = format("最近 %d 条信号原始参数（时间 · 事件 · 段数 · 每段 类型=值）", #t)
+        for _, v in ipairs(t) do
+            local parts = {}
+            for i, a in ipairs(v.args) do
+                parts[#parts + 1] = format("%d:%s=%s", i, a.type, a.val)
+            end
+            out[#out + 1] = format("  %s  %s（%d 段）  %s",
+                date("%H:%M:%S", v.t), v.event, v.n,
+                #parts > 0 and table.concat(parts, " │ ") or "（无参数）")
         end
-        print(format("  %s  %s（%d 段）  %s",
-            date("%H:%M:%S", v.t), v.event, v.n,
-            #parts > 0 and table.concat(parts, " │ ") or "（无参数）"))
+    end
+    return out
+end
+
+function ns.RawText()
+    return table.concat(rawLines(), "\n")
+end
+
+function ns.DumpRaw()
+    for _, line in ipairs(rawLines()) do
+        print("|cff8ab4ff[记仇]|r " .. line)
     end
 end
 
@@ -1193,6 +1220,19 @@ function ns.PrintEnv()
     end
     print("|cff8ab4ff[记仇]|r PVP 计数接口：" ..
         (#found > 0 and table.concat(found, " · ") or "一个都不存在"))
+
+    -- 新版记分板：旧接口报错提示里写的是 C_PvPScoreInfo(offsetindex)，
+    -- 探测这个命名空间是 table 还是 function、有哪些成员
+    if type(C_PvPScoreInfo) == "table" then
+        local members = {}
+        for k, v in pairs(C_PvPScoreInfo) do
+            members[#members + 1] = tostring(k) .. ":" .. type(v)
+        end
+        print("|cff8ab4ff[记仇]|r 记分板 C_PvPScoreInfo：table，成员 " ..
+            (#members > 0 and table.concat(members, ", ") or "（空表）"))
+    else
+        print("|cff8ab4ff[记仇]|r 记分板 C_PvPScoreInfo：" .. type(C_PvPScoreInfo))
+    end
 end
 
 --------------------------------------------------------------
@@ -1226,6 +1266,17 @@ function ns.DiagText()
         .. " · PVP击杀数 " .. YN(ns.pvpKillsOK)
         .. " · 命中消息 " .. YN(ns.selfHitsOK)
 
+    -- 新版记分板命名空间：旧接口报错提示里出现的 C_PvPScoreInfo
+    local scoreKind = type(C_PvPScoreInfo)
+    if scoreKind == "table" then
+        local members = {}
+        for k, v in pairs(C_PvPScoreInfo) do members[#members + 1] = tostring(k) .. ":" .. type(v) end
+        lines[#lines + 1] = "记分板 C_PvPScoreInfo：table，成员 " ..
+            (#members > 0 and table.concat(members, ", ") or "（空表）")
+    else
+        lines[#lines + 1] = "记分板 C_PvPScoreInfo：" .. tostring(scoreKind)
+    end
+
     local s = (KillListDB and KillListDB.settings) or {}
     lines[#lines + 1] = format("设置：姓名板 %s · 提示音 %s · 屏幕提示 %s · 敌情条 %s · 调试 %s",
         (s.nameplate and "开" or "关"), tostring(s.alertSound or 1),
@@ -1237,6 +1288,14 @@ function ns.DiagText()
     lines[#lines + 1] = format("数据：名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d)
 
     return table.concat(lines, "\n")
+end
+
+-- 探针窗汇总：环境诊断 + PARTY_KILL 留档 + 全部信号原始参数，一窗可复制导出
+function ns.ProbeText()
+    local parts = { ns.DiagText() or "" }
+    parts[#parts + 1] = "\n===== PARTY_KILL 记录 =====\n" .. (ns.PartyKillText() or "")
+    parts[#parts + 1] = "\n===== 信号原始参数 =====\n" .. (ns.RawText() or "")
+    return table.concat(parts, "\n")
 end
 
 --------------------------------------------------------------
