@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.27"
+ns.version = "2.1.28"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1291,10 +1291,17 @@ function ns.DiagText()
 end
 
 -- 探针窗汇总：环境诊断 + PARTY_KILL 留档 + 全部信号原始参数，一窗可复制导出
+-- 每段各自容错：某一段报错不拖垮整窗，错误文本直接写进结果里方便排查
 function ns.ProbeText()
-    local parts = { ns.DiagText() or "" }
-    parts[#parts + 1] = "\n===== PARTY_KILL 记录 =====\n" .. (ns.PartyKillText() or "")
-    parts[#parts + 1] = "\n===== 信号原始参数 =====\n" .. (ns.RawText() or "")
+    local function safe(fn)
+        if type(fn) ~= "function" then return "（接口缺失）" end
+        local ok, txt = pcall(fn)
+        if ok and type(txt) == "string" then return txt end
+        return "（本段读取失败：" .. tostring(txt) .. "）"
+    end
+    local parts = { safe(ns.DiagText) }
+    parts[#parts + 1] = "\n===== PARTY_KILL 记录 =====\n" .. safe(ns.PartyKillText)
+    parts[#parts + 1] = "\n===== 信号原始参数 =====\n" .. safe(ns.RawText)
     return table.concat(parts, "\n")
 end
 
