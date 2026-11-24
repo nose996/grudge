@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.35"
+ns.version = "2.1.36"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -927,7 +927,7 @@ local function RecordDeathFromRecap()
                     CheckCamping(entry)
                     ns.Log("死亡记录：" .. entry.name, "death")
                 end
-                return
+                return true
 
             elseif type(name) == "string" and name ~= "" and LookupCacheByName(name) then
                 local info2 = LookupCacheByName(name)
@@ -936,12 +936,13 @@ local function RecordDeathFromRecap()
                     CheckCamping(entry)
                     ns.Log("死亡记录（按缓存匹配）：" .. entry.name, "death")
                 end
-                return
+                return true
             end
         end
     end
 
     ns.Debug("死亡回顾里没有找到玩家来源")
+    return false
 end
 
 --------------------------------------------------------------
@@ -1243,6 +1244,18 @@ function ns.AddManual(name)
     end
 end
 
+-- 名单条目右键：对已有的人直接补记一条击杀
+function ns.ManualKill(entry)
+    if type(entry) ~= "table" or not entry.name then return end
+    local e = Record(entry.name, "kill", entry.guid, true, "manual")
+    if e then
+        print("|cff8ab4ff[记仇]|r 已补记击杀：" .. e.name)
+        ns.Log("手动补记击杀（右键）：" .. e.name, "kill")
+    else
+        print("|cff8ab4ff[记仇]|r 没记上（自己/队友或名字无效）")
+    end
+end
+
 -- 供界面层查询：按 GUID 或名字找名单里的人（鼠标提示、后续的功能都靠它）
 ns.BestName = BestName
 function ns.FindPlayer(guid, name)
@@ -1432,6 +1445,8 @@ ns.targetOK     = pcall(frame.RegisterEvent, frame, "PLAYER_TARGET_CHANGED")
 pcall(frame.RegisterEvent, frame, "UPDATE_MOUSEOVER_UNIT")
 pcall(frame.RegisterEvent, frame, "ADDON_ACTION_BLOCKED")
 pcall(frame.RegisterEvent, frame, "ADDON_ACTION_FORBIDDEN")
+-- 脱离战斗后补读一次死亡回顾，兜底战场 recap 填充过晚（Record 有 15 秒去重，不会重复记）
+pcall(frame.RegisterEvent, frame, "PLAYER_REGEN_ENABLED")
 -- 战场是独立副本，事件流转和野外不同；先把战场系统消息也留档，看里面有没有击杀通报
 pcall(frame.RegisterEvent, frame, "CHAT_MSG_BG_SYSTEM_NEUTRAL")
 pcall(frame.RegisterEvent, frame, "CHAT_MSG_BG_SYSTEM_ALLIANCE")
@@ -1517,11 +1532,25 @@ frame:SetScript("OnEvent", function(self, event, ...)
         -- PLAYER_DEAD 在某些情况下会连着触发两次，用 deadPending 挡住重复
         if ns.deadPending then return end
         ns.deadPending = true
-        C_Timer.After(1.0, function()
-            ns.deadPending = false
-            local ok, err = pcall(RecordDeathFromRecap)
-            if not ok then ns.Debug("死亡回顾失败：" .. tostring(err)) end
-        end)
+        -- 战场里死亡回顾数据可能晚到，1 秒没读到凶手就隔 1.5 秒再试，最多 3 次
+        local attempts = 0
+        local function tryRecap()
+            attempts = attempts + 1
+            local ok, found = pcall(RecordDeathFromRecap)
+            if not ok then
+                ns.Debug("死亡回顾失败：" .. tostring(found))
+            end
+            if found or attempts >= 3 then
+                ns.deadPending = false
+            else
+                C_Timer.After(1.5, tryRecap)
+            end
+        end
+        C_Timer.After(1.0, tryRecap)
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- 脱离战斗再补读一次死亡回顾，兜底战场 recap 填充过晚
+        pcall(RecordDeathFromRecap)
 
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         local unit = ...

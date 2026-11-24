@@ -329,8 +329,13 @@ local function CreateRow(i)
 
     r:SetScript("OnEnter", function(self) self.bg:SetColorTexture(1, 1, 1, 0.09) end)
     r:SetScript("OnLeave", function(self) self.bg:SetColorTexture(1, 1, 1, self.__base or 0.018) end)
-    r:SetScript("OnClick", function(self)
-        if self.entry then SelectEntry(self.entry) end
+    r:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            -- 右键该条目：补记一条「我杀过他」
+            if self.entry and ns.ManualKill then ns.ManualKill(self.entry) end
+        elseif self.entry then
+            SelectEntry(self.entry)
+        end
     end)
 
     return r
@@ -470,6 +475,11 @@ end
 local btnStar   = MakeDetailButton("标星", 6)
 local btnIgnore = MakeDetailButton("忽略", 102)
 local btnDelete = MakeDetailButton("删除", 198, true)
+local btnKill   = MakeDetailButton("补记击杀", 294)
+
+btnKill:SetScript("OnClick", function()
+    if selected and ns.ManualKill then ns.ManualKill(selected) end
+end)
 
 btnStar:SetScript("OnClick", function()
     if not selected then return end
@@ -1639,7 +1649,7 @@ SlashCmdList["KILLLIST"] = function(msg)
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add [名字] 手动补记（选中对方后可省略名字） · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl probe 探针诊断窗（env/pk/raw 同一窗口可复制导出） · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add [名字] 手动补记（选中对方后可省略名字；名单里右键某人或详情区「补记击杀」按钮也行） · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl probe 探针诊断窗（env/pk/raw 同一窗口可复制导出） · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if msg == "" then
