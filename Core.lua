@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.28"
+ns.version = "2.1.29"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -334,15 +334,47 @@ end
 -- 2.1.27：SYSTEM（离队/找玩家/排队这类刷屏消息）不进缓冲，免得把荣誉、计数记录挤掉。
 ns.rawBuf = {}
 local RAW_KEEP = { HONOR_GAIN = true, PVP_KILLS = true, MISC_INFO = true, PARTY_KILL = true, BG_SYS = true }
+
+-- 参数序列化：table 展开一层（最多 20 个键），把里面的键/类型/值打出来；
+-- 嵌套 table 只标类型和地址。用来排查事件结构化表里是否藏着受害者 GUID/名字。
+local function ArgText(v)
+    local ty = type(v)
+    if ty ~= "table" then return ty, tostring(v) end
+    local parts = {}
+    local cnt = 0
+    for k, x in pairs(v) do
+        cnt = cnt + 1
+        if cnt <= 20 then
+            local xt = type(x)
+            local xv = xt == "table" and tostring(x) or tostring(x)
+            parts[#parts + 1] = tostring(k) .. "=" .. xt .. ":" .. xv
+        end
+    end
+    local tail = cnt > 20 and format(" …（共%d键）", cnt) or ""
+    return "table", "{" .. table.concat(parts, ", ") .. "}" .. tail
+end
+
 function ns.NoteRaw(event, ...)
-    if not RAW_KEEP[event] then return end
+    -- SYSTEM 单独走关键词过滤：只留击杀/死亡/荣誉/据点相关，丢弃找玩家、排队、离队等刷屏
+    if event == "SYSTEM" then
+        local msg = ...
+        if type(msg) ~= "string" then return end
+        if not (msg:find("杀死") or msg:find("击杀") or msg:find("死亡")
+            or msg:find("击败") or msg:find("消灭") or msg:find("荣誉")
+            or msg:find("突袭") or msg:find("占领") or msg:find("夺取")) then
+            return
+        end
+    elseif not RAW_KEEP[event] then
+        return
+    end
     local t = ns.rawBuf
     if #t >= 40 then table.remove(t, 1) end
     local args = {}
     local n = select("#", ...)
     for i = 1, n do
         local v = select(i, ...)
-        args[i] = { type = type(v), val = tostring(v) }
+        local ty, val = ArgText(v)
+        args[i] = { type = ty, val = val }
     end
     t[#t + 1] = { t = time(), event = event, n = n, args = args }
 end
