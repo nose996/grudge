@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.44"
+ns.version = "2.1.45"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -982,6 +982,13 @@ local function RecordDeathFromRecap()
         return
     end
 
+    -- 这次死亡若发生在战场/竞技场（PLAYER_DEAD 那一刻记下的标记），
+    -- 后续晚到、脱战补读的回顾一律不记，避免战场凶手被补进野外名单。
+    if ns.deadInPvp then
+        ns.Debug("战场内死亡，回顾凶手不记入名单")
+        return false
+    end
+
     local myGUID = UnitGUID("player")
     ns.Debug(format("死亡回顾共 %d 条", #events))
 
@@ -1672,6 +1679,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(HandleMiscInfo, msg)
 
     elseif event == "PLAYER_DEAD" then
+        -- 记下这次死亡发生在不在战场/竞技场：战场死亡的回顾凶手不记进名单
+        ns.deadInPvp = (InPvpInstance() == true)
         -- PLAYER_DEAD 在某些情况下会连着触发两次，用 deadPending 挡住重复
         if ns.deadPending then return end
         ns.deadPending = true
