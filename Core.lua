@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.42"
+ns.version = "2.1.43"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -901,7 +901,8 @@ local function HandleMiscInfo(msg)
     -- 不依赖 COMBATLOG_VICTIM 模板：本服模板还没实证过，直接用中文结构切
     local killer, victim = m:match("^(.-)杀死了(.+)$")
     if not victim then
-        ns.Log("战斗信息没解析出：" .. m, "info")
+        -- 不含击杀结构的系统消息（离队、查不到玩家、队伍解散、被移出团队等）直接静默，
+        -- 不往日志窗刷「没解析出」的噪音
         return
     end
 
