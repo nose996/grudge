@@ -391,8 +391,11 @@ RefreshList = function()
     local dIdx = 0
     for i = 1, #list do
         local entry = list[i]
-        -- 二次校验：条目必须还在当前名单表里，丢弃跨表残留的孤立对象
-        if not players or players[entry.key or entry.name] == entry then
+        -- 二次校验：条目必须还在当前名单表里，丢弃跨表残留的孤立对象（key/name 两个键都查）
+        local inTable = not players
+            or players[entry.key] == entry
+            or players[entry.name] == entry
+        if inTable then
             dIdx = dIdx + 1
             local r = rowPool[dIdx]
             if not r then
@@ -575,8 +578,9 @@ end
 SetKind = function(k)
     kind     = k
     selected = nil
-    RefreshList()
-    UpdateDetail()
+    -- 刷新包一层容错：即便列表刷新抛错，页签高亮也要照常切换，避免按钮卡在旧状态
+    pcall(RefreshList)
+    pcall(UpdateDetail)
 
     local function tone(tab, on)
         if tab.__setIdleColor then tab.__setIdleColor(0.72, 0.70, 0.66) end

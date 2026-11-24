@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.40"
+ns.version = "2.1.41"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -908,6 +908,11 @@ end
 --------------------------------------------------------------
 -- 信号 3：死亡回顾，找出杀你的人
 --------------------------------------------------------------
+-- 同一次死亡事件指纹：来源 GUID + 受击时间戳 + 技能 + 伤害。
+-- recap 会在重试、脱离战斗补读时被反复读取，靠指纹把「同一次死亡」只记一次，
+-- 而不是按 15 秒时间窗（跨分钟的重试仍会漏挡）。
+local recapSeen = {}
+
 local function RecordDeathFromRecap()
     if not C_DeathRecap or not C_DeathRecap.GetRecapEvents then
         ns.Debug("没有 C_DeathRecap 接口，无法自动识别凶手")
@@ -930,6 +935,18 @@ local function RecordDeathFromRecap()
             local name = e.sourceName or e.casterName
             ns.Debug(format("  第 %d 条：%s / %s", i, tostring(name), tostring(guid)))
             if type(guid) == "string" and guid:find("^Player%-") and guid ~= myGUID then
+                -- 事件指纹：同一次死亡无论被重试/脱战补读读几遍，只记一次
+                local fp = guid .. "|" .. SafeStr(e.timestamp) .. "|" ..
+                    SafeStr(e.spellId or e.spellName) .. "|" .. SafeStr(e.amount)
+                if recapSeen[fp] then
+                    ns.Debug("  同一次死亡已记过，跳过：" .. SafeStr(name))
+                    return true
+                end
+                recapSeen[fp] = true
+                local seenN = 0
+                for _ in pairs(recapSeen) do seenN = seenN + 1 end
+                if seenN > 80 then recapSeen = {}; recapSeen[fp] = true end
+
                 -- 把这条来源事件的全部字段打出来，排查名字是否取自错位字段 / 另有全名字段
                 local fields = {}
                 for k, v in pairs(e) do
@@ -1440,6 +1457,23 @@ function ns.DiagText()
             buckets[#buckets + 1] = SafeStr(bk) .. "(" .. cnt .. ")"
         end
         lines[#lines + 1] = "存档桶：" .. (#buckets > 0 and Join(buckets, ", ") or "（无）")
+    end
+
+    -- 逐条内存清单：名字 / GUID / 击杀 / 死亡 / 是否忽略，便于核对哪个人在表里、计数多少
+    if PLAYERS then
+        local rows = {}
+        for _, e in pairs(PLAYERS) do
+            if type(e) == "table" then
+                rows[#rows + 1] = format("  · %s [%s] 杀%d 死%d%s",
+                    SafeStr(e.name), SafeStr(e.guid or "-"),
+                    e.kills or 0, e.deaths or 0,
+                    e.ignored and " [忽略]" or "")
+            end
+        end
+        if #rows > 0 then
+            lines[#lines + 1] = "内存条目："
+            for _, r in ipairs(rows) do lines[#lines + 1] = r end
+        end
     end
 
     return table.concat(lines, "\n")
