@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.41"
+ns.version = "2.1.42"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -56,6 +56,31 @@ local function CharKey()
     if type(n) == "string" and n ~= "" then return n, true end
     return "未知角色", false
 end
+
+-- 判断当前是否在 PVP 副本（战场 / 竞技场）。多接口兜底：
+--   返回 true  = 在战场/竞技场；false = 在野外；nil = 接口都拿不到值（不确定）
+-- 第二个返回值是判定来源，方便探针核对口径。
+local function InPvpInstance()
+    -- 1) GetInstanceInfo：第 2 个返回值是 instanceType（none/pvp/arena/party/raid）
+    local ok, ret = pcall(function() return { GetInstanceInfo() } end)
+    if ok and type(ret) == "table" and type(ret[2]) == "string" then
+        local itype = ret[2]
+        if itype == "pvp" or itype == "arena" then return true, "instance:" .. itype end
+        if itype == "none" then return false, "instance:none" end
+    end
+    -- 2) IsInBattleground()
+    if type(IsInBattleground) == "function" then
+        local ok2, v2 = pcall(IsInBattleground)
+        if ok2 and type(v2) == "boolean" then return v2, "IsInBattleground" end
+    end
+    -- 3) C_PvP.IsInBattleground()
+    if type(C_PvP) == "table" and type(C_PvP.IsInBattleground) == "function" then
+        local ok3, v3 = pcall(C_PvP.IsInBattleground)
+        if ok3 and type(v3) == "boolean" then return v3, "C_PvP" end
+    end
+    return nil, "unknown"
+end
+ns.InPvpInstance = InPvpInstance
 
 local function InitDB()
     if type(KillListDB) ~= "table" then KillListDB = {} end
@@ -553,6 +578,16 @@ local function Record(name, kind, guid, noDedupe, src)
 
     local me = UnitName("player")
     if me and name == me then return nil end
+
+    -- 战场/竞技场里不做自动统计（只记野外交手）；手动补记 src="manual" 不受此限。
+    -- 判定拿不到值（nil）时不拦截，避免把野外误判成战场而漏记。
+    if src ~= "manual" then
+        local inPvp = InPvpInstance()
+        if inPvp == true then
+            ns.Debug("PVP 副本内，自动记录已跳过：" .. name)
+            return nil
+        end
+    end
 
     -- 队友永远不算「我杀过的」，挡在落库之前
     if kind == "kill" and IsTeammate(name) then
@@ -1441,6 +1476,17 @@ function ns.DiagText()
 
     local k, d, n = ns.GetStats()
     lines[#lines + 1] = format("数据：名单 %d 人 · 击杀 %d · 死亡 %d", n, k, d)
+
+    -- 场景判定：现在算野外还是战场/竞技场，以及判定来源；再把 GetInstanceInfo 原始各段打出来核对
+    local inPvp, pvpSrc = InPvpInstance()
+    local pvpText = inPvp == nil and "不确定" or (inPvp and "战场/竞技场" or "野外")
+    lines[#lines + 1] = format("场景判定：%s（%s）", pvpText, SafeStr(pvpSrc))
+    local okInst, inst = pcall(function() return { GetInstanceInfo() } end)
+    if okInst and type(inst) == "table" then
+        local parts = {}
+        for i = 1, math.min(#inst, 6) do parts[#parts + 1] = i .. "=" .. SafeStr(inst[i]) end
+        lines[#lines + 1] = "  GetInstanceInfo：" .. Join(parts, ", ")
+    end
 
     -- 分桶诊断：确认写入和读取落在同一个角色桶，避免名字全/半不一致把数据写进空桶
     local curKey = select(1, CharKey())
