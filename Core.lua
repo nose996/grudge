@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.37"
+ns.version = "2.1.38"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -928,9 +928,22 @@ local function RecordDeathFromRecap()
             local name = e.sourceName or e.casterName
             ns.Debug(format("  第 %d 条：%s / %s", i, tostring(name), tostring(guid)))
             if type(guid) == "string" and guid:find("^Player%-") and guid ~= myGUID then
+                -- 把这条来源事件的全部字段打出来，排查名字是否取自错位字段 / 另有全名字段
+                local fields = {}
+                for k, v in pairs(e) do
+                    fields[#fields + 1] = SafeStr(k) .. "=" .. type(v) .. ":" .. SafeStr(v)
+                end
+                ns.Debug("  来源字段：" .. Join(fields, ", "))
                 local info = cacheByGUID[guid]
-                -- 以回顾里的明文名字为准；缓存只补等级/职业，不用缓存名覆盖回顾名
-                local n = (type(name) == "string" and name ~= "") and name or (info and info.name)
+                -- 名字可信度：明文能在姓名板缓存里对上才用明文；对不上（残缺/错位字段）就回退 GUID 缓存的全名
+                local n
+                if type(name) == "string" and name ~= "" and LookupCacheByName(name) then
+                    n = name
+                elseif info and info.name then
+                    n = info.name
+                else
+                    n = name
+                end
                 local entry = Record(n, "death", guid, nil, "recap")
                 if entry then
                     CheckCamping(entry)
