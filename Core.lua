@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.36"
+ns.version = "2.1.37"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -486,13 +486,21 @@ local function PurgeGarbage()
     return n
 end
 
+-- 两个名字是不是同一个人：相等，或互为「半名 ↔ 全名」（空格分隔）
+local function NamesMatch(a, b)
+    if type(a) ~= "string" or type(b) ~= "string" then return false end
+    if a == b then return true end
+    return a:sub(1, #b + 1) == b .. " " or b:sub(1, #a + 1) == a .. " "
+end
+
 local function FindEntry(name, guid)
     local players = PLAYERS
     if players[name] then return players[name], name end
 
     if guid and guid ~= "" then
         for k, v in pairs(players) do
-            if type(v) == "table" and v.guid == guid then return v, k end
+            -- GUID 相同但名字完全对不上（私服 GUID 复用/错绑），不当同一个人，避免并到别人条目
+            if type(v) == "table" and v.guid == guid and NamesMatch(k, name) then return v, k end
         end
     end
 
@@ -500,7 +508,7 @@ local function FindEntry(name, guid)
     -- 靠空格分隔，所以「张三」不会被「张三丰」误吞
     for k, v in pairs(players) do
         if type(v) == "table" and type(k) == "string" and k ~= name then
-            if name:sub(1, #k + 1) == k .. " " or k:sub(1, #name + 1) == name .. " " then
+            if NamesMatch(k, name) then
                 return v, k
             end
         end
@@ -921,7 +929,8 @@ local function RecordDeathFromRecap()
             ns.Debug(format("  第 %d 条：%s / %s", i, tostring(name), tostring(guid)))
             if type(guid) == "string" and guid:find("^Player%-") and guid ~= myGUID then
                 local info = cacheByGUID[guid]
-                local n = (info and info.name) or name
+                -- 以回顾里的明文名字为准；缓存只补等级/职业，不用缓存名覆盖回顾名
+                local n = (type(name) == "string" and name ~= "") and name or (info and info.name)
                 local entry = Record(n, "death", guid, nil, "recap")
                 if entry then
                     CheckCamping(entry)
