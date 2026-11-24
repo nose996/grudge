@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.33"
+ns.version = "2.1.34"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -366,23 +366,28 @@ local function Join(arr, sep)
     return out
 end
 
--- 参数序列化：table 展开一层（最多 20 个键），把里面的键/类型/值打出来；
--- 嵌套 table 只标类型和地址。用来排查事件结构化表里是否藏着受害者 GUID/名字。
+-- 参数序列化：普通值转字符串；table（或不可读的包装对象）展开一层键值。
+-- 用来排查事件参数 / 结构化表里是否藏着受害者 GUID/名字。
 local function ArgText(v)
     local ty = type(v)
-    if ty ~= "table" then return ty, SafeStr(v) end
+    local plain = SafeStr(v)
+    if plain:sub(1, 1) ~= "<" then return ty, plain end
+
+    -- 不可读值：可能是 secret 包装对象，尝试 pairs 展开一层；失败就标注受保护
     local parts = {}
     local cnt = 0
-    for k, x in pairs(v) do
-        cnt = cnt + 1
-        if cnt <= 20 then
-            local xt = type(x)
-            local seg = SafeStr(k) .. "=" .. xt .. ":" .. SafeStr(x)
-            if type(seg) == "string" then parts[#parts + 1] = seg end
+    local okP = pcall(function()
+        for k, x in pairs(v) do
+            cnt = cnt + 1
+            if cnt <= 20 then
+                parts[#parts + 1] = SafeStr(k) .. "=" .. type(x) .. ":" .. SafeStr(x)
+            end
         end
+    end)
+    if okP and cnt > 0 then
+        return "table", "{" .. Join(parts, ", ") .. "}"
     end
-    local tail = cnt > 20 and " …（共" .. cnt .. "键）" or ""
-    return "table", "{" .. Join(parts, ", ") .. "}" .. tail
+    return ty, plain .. "（不可读/受保护）"
 end
 
 function ns.NoteRaw(event, ...)
@@ -655,19 +660,19 @@ local function HandlePartyKill(...)
     -- 队友、路人、任何别人，一个标准处理，根本不用去判队伍关系。
     for i = 1, n do
         local v = select(i, ...)
-        -- 类型一起留档：「2.1.23」起 raw 每条写成 `string=xxx` / `number=123` / `nil`
-        -- 这样打一场就能看出参数到底是几段、每段什么类型，不用再对形态拍脑袋
-        raw[i] = type(v) .. "=" .. tostring(v)
-        if type(v) == "string" and v ~= "" then
-            if not killer and v:find("^Player%-") then
-                killer, killerIdx = v, i
-            end
-            if v:find("^Player%-") then
+        -- 类型一起留档：raw 每条写成 `string=xxx` / `number=123` / `nil`；
+        -- secret 受保护值用 SafeStr 兜底，不能读就标占位，不让 tostring/拼接抛错中断整条。
+        raw[i] = type(v) .. "=" .. SafeStr(v)
+        pcall(function()
+            if type(v) ~= "string" or v == "" then return end
+            local isPlayer = v:find("^Player%-") ~= nil
+            if isPlayer then
+                if not killer then killer, killerIdx = v, i end
                 if v ~= myGUID then victimGUID = victimGUID or v end
             elseif not v:find("^[A-Za-z]+%-") and #v <= 24 and not victimName then
                 victimName = v
             end
-        end
+        end)
     end
 
     -- 只有一个参数时没有「击杀者」可言（那段只能是受害者），所以这条判定只在
@@ -1196,13 +1201,29 @@ function ns.RemovePlayer(entry)
 end
 
 -- 手动补记：自动链路万一漏了（比如杀灰名小号没有荣誉），用这个补
-function ns.AddManual(name)    name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+function ns.AddManual(name)
+    name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local guid
     if name == "" then
-        print("|cff8ab4ff[记仇]|r 用法：/kl add 名字")
-        return
+        -- 没给名字：自动取当前选中目标，不用手敲全名
+        local okN, tName = pcall(BestName, "target")
+        local okG, tGuid = pcall(UnitGUID, "target")
+        local okP, isPlayer = pcall(UnitIsPlayer, "target")
+        local okU, isMe = pcall(UnitIsUnit, "target", "player")
+        name = (okN and type(tName) == "string") and tName or ""
+        guid = (okG and type(tGuid) == "string") and tGuid or nil
+        if name == "" then
+            print("|cff8ab4ff[记仇]|r 用法：/kl add 名字；或先选中对方玩家再 /kl add（自动取当前目标）")
+            return
+        end
+        if (okP and not isPlayer) or (okU and isMe) then
+            print("|cff8ab4ff[记仇]|r 当前目标不是敌方玩家，未补记")
+            return
+        end
     end
     local info = LookupCacheByName(name)
-    local e = Record(info and info.name or name, "kill", info and info.guid, true, "manual")
+    if not guid and info then guid = info.guid end
+    local e = Record(info and info.name or name, "kill", guid, true, "manual")
     if e then
         print("|cff8ab4ff[记仇]|r 已补记一条击杀：" .. e.name)
         ns.Log("手动补记击杀：" .. e.name, "kill")

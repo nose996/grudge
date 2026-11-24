@@ -1632,14 +1632,14 @@ SlashCmdList["KILLLIST"] = function(msg)
         if ns.AddManual then ns.AddManual(msg:gsub("^add%s+", "")) end
 
     elseif msg == "add" then
-        print("|cff8ab4ff[记仇]|r 用法：/kl add 名字（自动漏记时手动补一条击杀）")
+        if ns.AddManual then ns.AddManual() end
 
     elseif msg == "reset" then
         if ns.Reset then ns.Reset() end
         selected = nil
 
     elseif msg == "help" then
-        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add 名字 手动补记 · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl probe 探针诊断窗（env/pk/raw 同一窗口可复制导出） · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
+        print("|cff8ab4ff[记仇]|r 小地图边上的「仇」字按钮：左键开名单、右键开设置、拖动可挪位置。命令也都还在：/kl 开关 · /kl log 日志窗 · /kl export 导出 · /kl stats 统计 · /kl add [名字] 手动补记（选中对方后可省略名字） · /kl beep 试播提示音 · /kl snd 挑提示音 · /kl probe 探针诊断窗（env/pk/raw 同一窗口可复制导出） · /kl name 姓名诊断 · /kl names 姓名板 · /kl diag 复制诊断 · /kl demo 试敌情条 · /kl debug 调试 · /kl reset 清空 · /kl clean 清脏数据")
 
     else
         if msg == "" then
