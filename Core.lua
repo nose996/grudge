@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.25"
+ns.version = "2.1.26"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1179,6 +1179,7 @@ function ns.PrintEnv()
     -- 本服没有 GetPVPKills，别的可能在。挨个试一遍，能用的直接显示数值
     local probes = {
         "GetPVPKills", "GetPVPDeaths", "GetHonorKills", "GetPVPHonor", "GetPVPRankProgress",
+        "GetNumBattlefieldScores", "GetBattlefieldScore", "GetBattlefieldTeamInfo", "GetBattlefieldWinner",
     }
     local found = {}
     for _, fn in ipairs(probes) do
@@ -1264,6 +1265,10 @@ ns.targetOK     = pcall(frame.RegisterEvent, frame, "PLAYER_TARGET_CHANGED")
 pcall(frame.RegisterEvent, frame, "UPDATE_MOUSEOVER_UNIT")
 pcall(frame.RegisterEvent, frame, "ADDON_ACTION_BLOCKED")
 pcall(frame.RegisterEvent, frame, "ADDON_ACTION_FORBIDDEN")
+-- 战场是独立副本，事件流转和野外不同；先把战场系统消息也留档，看里面有没有击杀通报
+pcall(frame.RegisterEvent, frame, "CHAT_MSG_BG_SYSTEM_NEUTRAL")
+pcall(frame.RegisterEvent, frame, "CHAT_MSG_BG_SYSTEM_ALLIANCE")
+pcall(frame.RegisterEvent, frame, "CHAT_MSG_BG_SYSTEM_HORDE")
 
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -1317,6 +1322,14 @@ frame:SetScript("OnEvent", function(self, event, ...)
             ns.Log("[原文·战斗信息] " .. msg, "info")
         end
         pcall(HandleMiscInfo, msg)
+
+    elseif event == "CHAT_MSG_BG_SYSTEM_NEUTRAL" or event == "CHAT_MSG_BG_SYSTEM_ALLIANCE"
+        or event == "CHAT_MSG_BG_SYSTEM_HORDE" then
+        ns.NoteRaw("BG_SYS", ...)
+        local msg = ...
+        if type(msg) == "string" and msg ~= "" then
+            ns.Log("[原文·战场消息] " .. msg, "info")
+        end
 
     elseif event == "CHAT_MSG_SYSTEM" then
         ns.NoteRaw("SYSTEM", ...)
