@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.29"
+ns.version = "2.1.30"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -335,19 +335,30 @@ end
 ns.rawBuf = {}
 local RAW_KEEP = { HONOR_GAIN = true, PVP_KILLS = true, MISC_INFO = true, PARTY_KILL = true, BG_SYS = true }
 
+-- 安全转字符串：本服存在 secret 等非常规类型，tostring 不一定返回字符串，
+-- 强制兜底成原生 string，避免 table.concat 因混入 secret 直接报错。
+local function SafeStr(v)
+    local ty = type(v)
+    if ty == "string" then return v end
+    if ty == "number" or ty == "boolean" then return tostring(v) end
+    if ty == "nil" then return "nil" end
+    local ok, s = pcall(tostring, v)
+    if ok and type(s) == "string" and s ~= "" then return s end
+    return "<" .. ty .. ">"
+end
+
 -- 参数序列化：table 展开一层（最多 20 个键），把里面的键/类型/值打出来；
 -- 嵌套 table 只标类型和地址。用来排查事件结构化表里是否藏着受害者 GUID/名字。
 local function ArgText(v)
     local ty = type(v)
-    if ty ~= "table" then return ty, tostring(v) end
+    if ty ~= "table" then return ty, SafeStr(v) end
     local parts = {}
     local cnt = 0
     for k, x in pairs(v) do
         cnt = cnt + 1
         if cnt <= 20 then
             local xt = type(x)
-            local xv = xt == "table" and tostring(x) or tostring(x)
-            parts[#parts + 1] = tostring(k) .. "=" .. xt .. ":" .. xv
+            parts[#parts + 1] = SafeStr(k) .. "=" .. xt .. ":" .. SafeStr(x)
         end
     end
     local tail = cnt > 20 and format(" …（共%d键）", cnt) or ""
@@ -389,7 +400,7 @@ local function rawLines()
         for _, v in ipairs(t) do
             local parts = {}
             for i, a in ipairs(v.args) do
-                parts[#parts + 1] = format("%d:%s=%s", i, a.type, a.val)
+                parts[#parts + 1] = format("%d:%s=%s", i, SafeStr(a.type), SafeStr(a.val))
             end
             out[#out + 1] = format("  %s  %s（%d 段）  %s",
                 date("%H:%M:%S", v.t), v.event, v.n,
