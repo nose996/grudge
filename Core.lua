@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.43"
+ns.version = "2.1.44"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -391,6 +391,22 @@ local function Join(arr, sep)
     return out
 end
 
+-- 把单位标记（player / target / raid12 / party3 …）反查成具体单位，用于探针探测：
+-- 计数事件的参数只是单位标记，看它到底指向谁、是不是敌方玩家。所有查询都 pcall 兜底。
+local function ResolveUnitMark(mark)
+    if type(mark) ~= "string" or mark == "" then return nil end
+    local okE, exists = pcall(UnitExists, mark)
+    if not okE or not exists then return mark .. "（单位不存在）" end
+    local okN, name = pcall(UnitName, mark)
+    local okG, guid = pcall(UnitGUID, mark)
+    local okP, isPlayer = pcall(UnitIsPlayer, mark)
+    local okR, isEnemy = pcall(UnitIsEnemy, mark, "player")
+    return format("%s → %s / %s · 玩家=%s · 敌对=%s",
+        mark,
+        SafeStr(okN and name or "?"), SafeStr(okG and guid or "?"),
+        tostring(okP and isPlayer), tostring(okR and isEnemy))
+end
+
 -- 参数序列化：普通值转字符串；table（或不可读的包装对象）展开一层键值。
 -- 用来排查事件参数 / 结构化表里是否藏着受害者 GUID/名字。
 local function ExpandTable(v)
@@ -448,6 +464,11 @@ function ns.NoteRaw(event, ...)
         local okA, ty, val = pcall(ArgText, v)
         if okA then
             args[i] = { type = SafeStr(ty), val = SafeStr(val) }
+            -- 计数事件的参数是单位标记：探针里附带上反查到的单位身份，先探测可行性
+            if event == "PVP_KILLS" and ty == "string" and SafeStr(val):sub(1, 1) ~= "<" then
+                local okR, res = pcall(ResolveUnitMark, val)
+                if okR and res then args[i].val = SafeStr(val) .. " ｜ " .. res end
+            end
         else
             args[i] = { type = "error", val = SafeStr(ty) }
         end
