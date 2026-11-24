@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.24"
+ns.version = "2.1.25"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -313,6 +313,40 @@ function ns.DumpPartyKill()
     for i = 1, math.min(nr, 10) do
         print(format("    raid%d：%s · %s", i,
             tostring(BestName("raid" .. i)), tostring(UnitGUID("raid" .. i))))
+    end
+end
+
+-- 通用原始参数留档（/kl raw）。2.1.25 游戏更新后 PARTY_KILL 不再推送，
+-- 击杀侧只剩荣誉消息和计数事件；它们到底带几段、每段是名字还是 GUID，
+-- 不能再拍脑袋猜，先把原始参数连类型一起留档，打一场再回看。
+ns.rawBuf = {}
+function ns.NoteRaw(event, ...)
+    local t = ns.rawBuf
+    if #t >= 24 then table.remove(t, 1) end
+    local args = {}
+    local n = select("#", ...)
+    for i = 1, n do
+        local v = select(i, ...)
+        args[i] = { type = type(v), val = tostring(v) }
+    end
+    t[#t + 1] = { t = time(), event = event, n = n, args = args }
+end
+
+function ns.DumpRaw()
+    local t = ns.rawBuf or {}
+    if #t == 0 then
+        print("|cff8ab4ff[记仇]|r 还没有捕获到信号，打一场 PVP 再看")
+        return
+    end
+    print(format("|cff8ab4ff[记仇]|r 最近 %d 条信号原始参数（时间 · 事件 · 段数 · 每段 类型=值）", #t))
+    for _, v in ipairs(t) do
+        local parts = {}
+        for i, a in ipairs(v.args) do
+            parts[#parts + 1] = format("%d:%s=%s", i, a.type, a.val)
+        end
+        print(format("  %s  %s（%d 段）  %s",
+            date("%H:%M:%S", v.t), v.event, v.n,
+            #parts > 0 and table.concat(parts, " │ ") or "（无参数）"))
     end
 end
 
@@ -1123,6 +1157,9 @@ function ns.PrintEnv()
         ((C_DeathRecap and C_DeathRecap.GetRecapEvents) and "存在" or "不存在"))
     print("|cff8ab4ff[记仇]|r 荣誉击杀模板：" ..
         (GetHonorPattern() and ("已解析 → " .. GetHonorPattern()) or "缺失"))
+    -- 更新后把模板原文也打出来：模板被裁成什么样、名字占位符还在不在，一眼看清
+    print("|cff8ab4ff[记仇]|r honor 模板原文：COMBATLOG_HONORGAIN=" .. tostring(_G["COMBATLOG_HONORGAIN"])
+        .. " · COMBATLOG_PVPKILL=" .. tostring(_G["COMBATLOG_PVPKILL"]))
     print("|cff8ab4ff[记仇]|r 声音接口：PlaySound=" .. tostring(PlaySound ~= nil)
         .. " · PlaySoundFile=" .. tostring(PlaySoundFile ~= nil)
         .. " · 当前音源 " .. tostring((s and s.alertSound) or 1)
@@ -1246,6 +1283,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         ns.Notify("login")
 
     elseif event == "PARTY_KILL" then
+        ns.NoteRaw("PARTY_KILL", ...)
         pcall(HandlePartyKill, ...)
 
     elseif event == "CHAT_MSG_COMBAT_SELF_HITS" or event == "CHAT_MSG_COMBAT_SELF_SPELLS"
@@ -1257,6 +1295,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(CacheCurrentUnits)
 
     elseif event == "PLAYER_PVP_KILLS_CHANGED" then
+        ns.NoteRaw("PVP_KILLS", ...)
         -- 这个计数器不可靠：队友的战果、以及灰名/宠物的判定都可能让它动；触发时 target 已被清空，
         -- 根本拿不到是谁。所以它只当「发生过一次 PVP 击杀」的痕迹，绝不拿它写名单。
         -- 2.1.22 实机踩过：只打了几枪并没打死的人，被这条路径拿「最近命中」猜成了我的击杀。
@@ -1266,10 +1305,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
             tostring(BestName("target")), tostring(guess or "无")), "info")
 
     elseif event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
+        ns.NoteRaw("HONOR_GAIN", ...)
         local msg = ...
         pcall(HandleHonorGain, msg)
 
     elseif event == "CHAT_MSG_COMBAT_MISC_INFO" then
+        ns.NoteRaw("MISC_INFO", ...)
         local msg = ...
         if type(msg) == "string" and (msg:find("杀死") or msg:find("死亡") or msg:find("击杀")
             or msg:find("击败") or msg:find("消灭") or msg:find("荣誉")) then
@@ -1278,6 +1319,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         pcall(HandleMiscInfo, msg)
 
     elseif event == "CHAT_MSG_SYSTEM" then
+        ns.NoteRaw("SYSTEM", ...)
         local msg = ...
         if type(msg) == "string" and (msg:find("杀死") or msg:find("击杀")
             or msg:find("死亡") or msg:find("击败") or msg:find("消灭")) then
