@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.32"
+ns.version = "2.1.33"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -337,35 +337,31 @@ local RAW_KEEP = { HONOR_GAIN = true, PVP_KILLS = true, MISC_INFO = true, PARTY_
 
 -- 安全转字符串：本服存在 secret 等非常规类型，tostring/format 不一定返回字符串，
 -- 每一步都断言最终是原生 string，不是就替换占位，避免 table.concat 混入 secret 崩溃。
+-- 安全转字符串：本服 secret string 被打上 tainted 标记，插件对它做比较/拼接/读取都会抛错。
+-- 所有可能触碰 secret 的操作都放进 pcall，失败一律换成 <类型> 占位，绝不把原值带出来。
 local function SafeStr(v)
     local ty = type(v)
-    local s
-    if ty == "string" then
-        s = v
-    elseif ty == "number" or ty == "boolean" then
-        s = tostring(v)
-    elseif ty == "nil" then
-        s = "nil"
-    else
-        local ok, r = pcall(tostring, v)
-        if ok and type(r) == "string" then s = r end
-    end
-    -- 可拼接校验：本服 type 可能误报，再试一次空串拼接，失败就换成占位
-    if type(s) ~= "string" then return "<" .. ty .. ">" end
-    local okC = pcall(function() return "" .. s end)
-    if not okC then return "<" .. ty .. ">" end
+    local ok, s = pcall(function()
+        if ty == "string" then return v end
+        if ty == "number" or ty == "boolean" then return tostring(v) end
+        if ty == "nil" then return "nil" end
+        return tostring(v)
+    end)
+    if not ok or type(s) ~= "string" then return "<" .. ty .. ">" end
+    -- 可比较/可拼接校验，仍在 pcall 内；secret 过不了这一关
+    local ok2 = pcall(function()
+        local _ = (s ~= "") and ("" .. s)
+    end)
+    if not ok2 then return "<" .. ty .. ">" end
     return s
 end
 
--- 绕过 table.concat：本服 secret 值即便 type 误报成 string，concat 内部仍会按原生类型判崩；
--- 改成逐段字符串累加，每段再过一次 SafeStr 兜底。
+-- 逐段字符串累加；每段已经过 SafeStr 兜底成普通字符串，不再做内容比较。
 local function Join(arr, sep)
     local out = ""
     for _, x in ipairs(arr) do
         local s = SafeStr(x)
-        if s ~= "" then
-            if out == "" then out = s else out = out .. sep .. s end
-        end
+        if out == "" then out = s else out = out .. sep .. s end
     end
     return out
 end
@@ -1456,28 +1452,34 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_COMBAT_MISC_INFO" then
         ns.NoteRaw("MISC_INFO", ...)
         local msg = ...
-        if type(msg) == "string" and (msg:find("杀死") or msg:find("死亡") or msg:find("击杀")
-            or msg:find("击败") or msg:find("消灭") or msg:find("荣誉")) then
-            ns.Log("[原文·战斗信息] " .. msg, "info")
-        end
+        pcall(function()
+            if type(msg) == "string" and (msg:find("杀死") or msg:find("死亡") or msg:find("击杀")
+                or msg:find("击败") or msg:find("消灭") or msg:find("荣誉")) then
+                ns.Log("[原文·战斗信息] " .. msg, "info")
+            end
+        end)
         pcall(HandleMiscInfo, msg)
 
     elseif event == "CHAT_MSG_BG_SYSTEM_NEUTRAL" or event == "CHAT_MSG_BG_SYSTEM_ALLIANCE"
         or event == "CHAT_MSG_BG_SYSTEM_HORDE" then
         ns.NoteRaw("BG_SYS", ...)
         local msg = ...
-        if type(msg) == "string" and msg ~= "" then
-            ns.Log("[原文·战场消息] " .. msg, "info")
-        end
+        pcall(function()
+            if type(msg) == "string" and msg ~= "" then
+                ns.Log("[原文·战场消息] " .. msg, "info")
+            end
+        end)
 
     elseif event == "CHAT_MSG_SYSTEM" then
         ns.NoteRaw("SYSTEM", ...)
         local msg = ...
-        if type(msg) == "string" and (msg:find("杀死") or msg:find("击杀")
-            or msg:find("死亡") or msg:find("击败") or msg:find("消灭")) then
-            ns.Log("[原文·系统] " .. msg, "info")
-            pcall(HandleMiscInfo, msg)
-        end
+        pcall(function()
+            if type(msg) == "string" and (msg:find("杀死") or msg:find("击杀")
+                or msg:find("死亡") or msg:find("击败") or msg:find("消灭")) then
+                ns.Log("[原文·系统] " .. msg, "info")
+            end
+        end)
+        pcall(HandleMiscInfo, msg)
 
     elseif event == "PLAYER_DEAD" then
         -- PLAYER_DEAD 在某些情况下会连着触发两次，用 deadPending 挡住重复
