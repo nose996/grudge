@@ -24,7 +24,7 @@
 
 local ADDON, ns = ...
 
-ns.version = "2.1.46"
+ns.version = "2.1.47"
 
 --------------------------------------------------------------
 -- 名单本体：每个角色一份，InitDB 里指向 KillListDB.chars[角色名].players
@@ -1317,11 +1317,37 @@ function ns.BuildExport(kind)
     return table.concat(lines, "\n")
 end
 
-function ns.RemovePlayer(entry)
-    if entry and entry.key and KillListDB then
-        PLAYERS[entry.key] = nil
-        ns.Notify("record")
+function ns.RemovePlayer(entry, kind)
+    if not entry or not entry.key or not KillListDB then return end
+
+    -- 按当前分页方向只清一边：同一个人可能既被我杀过、也杀过我，
+    -- 在「我杀过的」里删，不该连带删掉「杀过我的」记录。
+    if kind == "kill" or kind == "death" then
+        if kind == "kill" then
+            entry.kills     = 0
+            entry.firstKill = nil
+            entry.lastKill  = nil
+        else
+            entry.deaths     = 0
+            entry.firstDeath = nil
+            entry.lastDeath  = nil
+        end
+        -- 清掉该方向的历史交手记录，另一方向的历史保留
+        local keep = {}
+        for _, h in ipairs(entry.history or {}) do
+            if h.kind ~= kind then keep[#keep + 1] = h end
+        end
+        entry.history = keep
+        -- 另一方向还有计数就保留条目，两边都没了才整条删除
+        local remain = (kind == "kill") and (entry.deaths or 0) or (entry.kills or 0)
+        if remain > 0 then
+            ns.Notify("record")
+            return
+        end
     end
+
+    PLAYERS[entry.key] = nil
+    ns.Notify("record")
 end
 
 -- 手动补记：自动链路万一漏了（比如杀灰名小号没有荣誉），用这个补

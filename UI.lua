@@ -507,7 +507,7 @@ end)
 
 btnDelete:SetScript("OnClick", function()
     if not selected then return end
-    ns.RemovePlayer(selected)
+    ns.RemovePlayer(selected, kind)
     selected = nil
     UpdateDetail()
 end)
@@ -572,7 +572,7 @@ UpdateDetail = function()
     btnIgnore:SetText(selected.ignored and "取消忽略" or "忽略")
 
     btnDelete:Show()
-    btnDelete:SetText("删除")
+    btnDelete:SetText((kind == "kill") and "清除击杀记录" or "清除死亡记录")
 end
 
 SetKind = function(k)
